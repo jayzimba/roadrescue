@@ -690,6 +690,50 @@ class BusinessRepository(
         requestRef.update("bidShopIds", FieldValue.arrayUnion(shop.id)).await()
     }
 
+    suspend fun requestJobCompletionByProvider(requestId: String) {
+        val shop = _myBusiness.value ?: error("Register a business first")
+        val doc = firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS).document(requestId).get().await()
+        val request = FirestoreMappers.requestFromDocument(doc) ?: error("Request not found")
+        if (request.acceptedShopId != shop.id) error("Not your active job")
+        if (request.status == RequestStatus.COMPLETED) return
+        if (request.completionRequestedBy == CompletionParty.PROVIDER) return
+
+        if (request.completionRequestedBy == CompletionParty.CUSTOMER) {
+            finishProviderJob(requestId)
+            return
+        }
+
+        firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS)
+            .document(requestId)
+            .update(
+                mapOf(
+                    "completionRequestedBy" to CompletionParty.PROVIDER.name,
+                    "status" to RequestStatus.IN_PROGRESS.name,
+                ),
+            ).await()
+    }
+
+    suspend fun confirmJobCompletionByProvider(requestId: String) {
+        val shop = _myBusiness.value ?: error("Register a business first")
+        val doc = firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS).document(requestId).get().await()
+        val request = FirestoreMappers.requestFromDocument(doc) ?: error("Request not found")
+        if (request.acceptedShopId != shop.id) error("Not your active job")
+        if (request.completionRequestedBy != CompletionParty.CUSTOMER) return
+        finishProviderJob(requestId)
+    }
+
+    private suspend fun finishProviderJob(requestId: String) {
+        firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS)
+            .document(requestId)
+            .update(
+                mapOf(
+                    "status" to RequestStatus.COMPLETED.name,
+                    "completionRequestedBy" to FieldValue.delete(),
+                    "completedAt" to FieldValue.serverTimestamp(),
+                ),
+            ).await()
+    }
+
     suspend fun getOnlineShops(): List<MechanicShop> {
         val snapshot = firestore.collection(FirestoreConstants.SHOPS)
             .whereEqualTo("isOnline", true)

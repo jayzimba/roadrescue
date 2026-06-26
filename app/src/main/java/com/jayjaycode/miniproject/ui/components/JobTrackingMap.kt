@@ -1,6 +1,5 @@
 package com.jayjaycode.miniproject.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,7 +21,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,14 +33,14 @@ import com.jayjaycode.miniproject.ui.theme.TextSecondary
 
 @Composable
 fun JobTrackingMap(
-    progress: Float,
+    progress: Float?,
     providerName: String,
     etaMinutes: Int,
     isTowing: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val animatedProgress by animateFloatAsState(progress.coerceIn(0f, 1f), label = "trackProgress")
-    val providerOffset = (animatedProgress * 0.75f).coerceIn(0.05f, 0.85f)
+    val enRoute = progress == null || progress < 1f
+    val displayProgress = progress?.coerceIn(0f, 1f) ?: 0.35f
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -56,9 +54,13 @@ fun JobTrackingMap(
             ) {
                 Text("Live tracking", fontWeight = FontWeight.SemiBold)
                 Text(
-                    if (animatedProgress >= 1f) "Arrived" else "~$etaMinutes min away",
+                    when {
+                        progress != null && progress >= 1f -> "Arrived"
+                        enRoute -> "En route · ~$etaMinutes min"
+                        else -> "~$etaMinutes min away"
+                    },
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (animatedProgress >= 1f) GreenAccent else OrangePrimary,
+                    color = if (progress != null && progress >= 1f) GreenAccent else OrangePrimary,
                     fontWeight = FontWeight.Medium,
                 )
             }
@@ -84,7 +86,7 @@ fun JobTrackingMap(
                 }
 
                 LinearProgressIndicator(
-                    progress = { animatedProgress },
+                    progress = { displayProgress },
                     modifier = Modifier
                         .align(Alignment.Center)
                         .fillMaxWidth(0.7f)
@@ -97,7 +99,7 @@ fun JobTrackingMap(
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
-                        .fillMaxWidth(providerOffset)
+                        .fillMaxWidth(displayProgress.coerceIn(0.15f, 0.85f))
                         .padding(end = 8.dp),
                     contentAlignment = Alignment.CenterEnd,
                 ) {

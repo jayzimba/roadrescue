@@ -19,3 +19,4 @@ local.properties
 firebase.json
 storage.rules
 firebase.index.json
+functions/node_modules

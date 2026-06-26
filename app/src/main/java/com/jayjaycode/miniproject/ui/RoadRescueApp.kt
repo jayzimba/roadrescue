@@ -15,7 +15,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import com.jayjaycode.miniproject.ui.components.AppTopBar
-import com.jayjaycode.miniproject.ui.components.BiddingFloatingCard
+import com.jayjaycode.miniproject.ui.components.ActiveJobFloatingCard
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -36,7 +36,9 @@ import com.jayjaycode.miniproject.ui.navigation.NavRoutes
 import com.jayjaycode.miniproject.ui.screens.ActiveJobScreen
 import com.jayjaycode.miniproject.ui.screens.AddPartListingScreen
 import com.jayjaycode.miniproject.ui.screens.AddServiceListingScreen
+import com.jayjaycode.miniproject.ui.components.BiddingFloatingCard
 import com.jayjaycode.miniproject.ui.screens.BiddingScreen
+import com.jayjaycode.miniproject.ui.screens.BreakdownRequestDetailScreen
 import com.jayjaycode.miniproject.ui.screens.CheckoutScreen
 import com.jayjaycode.miniproject.ui.screens.HomeScreen
 import com.jayjaycode.miniproject.ui.screens.MarketplaceScreen
@@ -51,10 +53,12 @@ import com.jayjaycode.miniproject.ui.screens.RequestFormScreen
 import com.jayjaycode.miniproject.ui.screens.RequestHistoryScreen
 import com.jayjaycode.miniproject.ui.screens.ServiceBookingDetailScreen
 import com.jayjaycode.miniproject.ui.screens.ServiceBookingScreen
+import com.jayjaycode.miniproject.ui.viewmodel.BreakdownRequestDetailViewModel
 import com.jayjaycode.miniproject.ui.viewmodel.MarketplaceViewModel
 import com.jayjaycode.miniproject.ui.viewmodel.PartOrderDetailViewModel
 import com.jayjaycode.miniproject.ui.viewmodel.RescueViewModel
 import com.jayjaycode.miniproject.ui.viewmodel.ServiceBookingDetailViewModel
+import com.jayjaycode.miniproject.util.NotificationDeepLink
 
 private val bottomNavRoutes = setOf(NavRoutes.HOME, NavRoutes.MARKETPLACE, NavRoutes.SERVICE_BOOKING)
 
@@ -64,6 +68,8 @@ fun RoadRescueApp(
     userName: String,
     userEmail: String,
     onSignOut: () -> Unit,
+    notificationDeepLink: NotificationDeepLink? = null,
+    onNotificationHandled: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val rescueViewModel: RescueViewModel = viewModel()
@@ -77,14 +83,33 @@ fun RoadRescueApp(
     val lowestBid by rescueViewModel.lowestBid.collectAsState()
     val biddingOverlayExpanded by rescueViewModel.biddingOverlayExpanded.collectAsState()
     val acceptedJob by rescueViewModel.acceptedJob.collectAsState()
+    val activeJobOverlayExpanded by rescueViewModel.activeJobOverlayExpanded.collectAsState()
+    val isActiveJobVisible by rescueViewModel.isActiveJobVisible.collectAsState()
 
-    LaunchedEffect(acceptedJob) {
-        if (acceptedJob != null && currentRoute != NavRoutes.ACTIVE_JOB) {
-            navController.navigate(NavRoutes.ACTIVE_JOB) {
-                popUpTo(NavRoutes.HOME)
+    LaunchedEffect(notificationDeepLink) {
+        val link = notificationDeepLink ?: return@LaunchedEffect
+        when (link.type) {
+            "new_bid", "bidding_ended" -> {
+                navController.navigate(NavRoutes.BIDDING) { launchSingleTop = true }
+            }
+            "bid_accepted", "bid_won" -> {
+                navController.navigate(NavRoutes.ACTIVE_JOB) { launchSingleTop = true }
+            }
+            "open_job", "new_part_order", "new_service_booking", "bid_lost" -> {
+                navController.navigate(NavRoutes.PROVIDER_DASHBOARD) { launchSingleTop = true }
+            }
+            "part_order_update" -> {
+                val destination = link.orderId?.let { NavRoutes.partOrderDetail(it) } ?: NavRoutes.MY_ORDERS
+                navController.navigate(destination) { launchSingleTop = true }
+            }
+            "service_booking_update" -> {
+                val destination = link.bookingId?.let { NavRoutes.serviceBookingDetail(it) } ?: NavRoutes.MY_ORDERS
+                navController.navigate(destination) { launchSingleTop = true }
             }
         }
+        onNotificationHandled()
     }
+
     val showBottomBar = currentRoute in bottomNavRoutes
     val showMainTopBar = showBottomBar
     val mainTopBarTitle = when (currentRoute) {
@@ -198,11 +223,7 @@ fun RoadRescueApp(
             composable(NavRoutes.BIDDING) {
                 BiddingScreen(
                     viewModel = rescueViewModel,
-                    onBidAccepted = {
-                        navController.navigate(NavRoutes.ACTIVE_JOB) {
-                            popUpTo(NavRoutes.HOME)
-                        }
-                    },
+                    onBidAccepted = { },
                     onBrowseApp = {
                         navController.navigate(NavRoutes.HOME) {
                             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -221,16 +242,35 @@ fun RoadRescueApp(
             composable(NavRoutes.ACTIVE_JOB) {
                 ActiveJobScreen(
                     viewModel = rescueViewModel,
-                    onDone = {
+                    onBrowseApp = {
                         navController.navigate(NavRoutes.HOME) {
-                            popUpTo(NavRoutes.HOME) { inclusive = true }
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
                         }
                     },
                 )
             }
 
             composable(NavRoutes.REQUEST_HISTORY) {
-                RequestHistoryScreen(onBack = { navController.popBackStack() })
+                RequestHistoryScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenRequest = { navController.navigate(NavRoutes.requestDetail(it)) },
+                )
+            }
+
+            composable(
+                route = NavRoutes.REQUEST_DETAIL,
+                arguments = listOf(navArgument("requestId") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val requestId = backStackEntry.arguments?.getString("requestId").orEmpty()
+                val detailViewModel: BreakdownRequestDetailViewModel = viewModel(
+                    factory = BreakdownRequestDetailViewModel.factory(requestId),
+                )
+                BreakdownRequestDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    viewModel = detailViewModel,
+                )
             }
 
             composable(NavRoutes.MARKETPLACE) {
@@ -383,6 +423,25 @@ fun RoadRescueApp(
                     onExtendTime = { rescueViewModel.extendBiddingTime() },
                     onAutoAcceptChanged = { rescueViewModel.setAutoAcceptLowestBid(it) },
                     onAcceptLowest = { rescueViewModel.acceptLowestBid() },
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
+            }
+
+            if (isActiveJobVisible && acceptedJob != null && currentRoute != NavRoutes.ACTIVE_JOB) {
+                val job = acceptedJob!!
+                ActiveJobFloatingCard(
+                    job = job,
+                    expanded = activeJobOverlayExpanded,
+                    completionActionLabel = rescueViewModel.customerCompletionActionLabel(job.request),
+                    completionPendingMessage = rescueViewModel.customerCompletionPendingMessage(job.request),
+                    onToggleExpanded = { rescueViewModel.toggleActiveJobOverlay() },
+                    onOpenJob = {
+                        navController.navigate(NavRoutes.ACTIVE_JOB) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onRequestCompletion = { rescueViewModel.requestJobCompletion() },
+                    onConfirmCompletion = { rescueViewModel.confirmJobCompletion() },
                     modifier = Modifier.align(Alignment.TopCenter),
                 )
             }

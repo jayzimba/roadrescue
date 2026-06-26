@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseUser
 import com.jayjaycode.miniproject.data.BusinessRepository
+import com.jayjaycode.miniproject.data.FcmTokenRepository
 import com.jayjaycode.miniproject.data.RescueRepository
 import com.jayjaycode.miniproject.data.auth.AuthRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -117,8 +118,11 @@ class AuthViewModel(
     }
 
     fun signOut() {
-        rescueRepository.clearActiveSession()
-        businessRepository.clearSession()
-        repository.signOut()
+        viewModelScope.launch {
+            runCatching { FcmTokenRepository.instance.removeCurrentToken() }
+            rescueRepository.clearActiveSession()
+            businessRepository.clearSession()
+            repository.signOut()
+        }
     }
 }

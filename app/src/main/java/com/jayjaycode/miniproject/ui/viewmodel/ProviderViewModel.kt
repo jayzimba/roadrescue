@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jayjaycode.miniproject.data.BreakdownRequest
+import com.jayjaycode.miniproject.data.CompletionParty
 import com.jayjaycode.miniproject.data.ProviderBidEntry
 import com.jayjaycode.miniproject.data.BusinessRepository
 import com.jayjaycode.miniproject.data.BusinessType
@@ -238,5 +239,41 @@ class ProviderViewModel(
                 _errorMessage.value = e.localizedMessage
             }
         }
+    }
+
+    fun requestJobCompletion(requestId: String) {
+        viewModelScope.launch {
+            _errorMessage.value = null
+            try {
+                repository.requestJobCompletionByProvider(requestId)
+                _successMessage.value = "Completion requested — waiting for customer"
+            } catch (e: Exception) {
+                _errorMessage.value = e.localizedMessage ?: "Could not request completion"
+            }
+        }
+    }
+
+    fun confirmJobCompletion(requestId: String) {
+        viewModelScope.launch {
+            _errorMessage.value = null
+            try {
+                repository.confirmJobCompletionByProvider(requestId)
+                _successMessage.value = "Job marked complete"
+            } catch (e: Exception) {
+                _errorMessage.value = e.localizedMessage ?: "Could not confirm completion"
+            }
+        }
+    }
+
+    fun providerCompletionActionLabel(request: BreakdownRequest?): String? = when (request?.completionRequestedBy) {
+        null -> "Mark job complete"
+        CompletionParty.PROVIDER -> null
+        CompletionParty.CUSTOMER -> "Confirm completion"
+    }
+
+    fun providerCompletionPendingMessage(request: BreakdownRequest?): String? = when (request?.completionRequestedBy) {
+        CompletionParty.PROVIDER -> "Waiting for customer to confirm completion"
+        CompletionParty.CUSTOMER -> "Customer marked job done — confirm to close"
+        else -> null
     }
 }

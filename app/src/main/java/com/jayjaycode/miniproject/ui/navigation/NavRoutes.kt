@@ -8,6 +8,7 @@ object NavRoutes {
     const val MARKETPLACE = "marketplace"
     const val SERVICE_BOOKING = "service_booking"
     const val REQUEST_HISTORY = "request_history"
+    const val REQUEST_DETAIL = "request_detail/{requestId}"
     const val PROFILE = "profile"
     const val REGISTER_BUSINESS = "register_business"
     const val PROVIDER_DASHBOARD = "provider_dashboard"
@@ -27,4 +28,6 @@ object NavRoutes {
     fun partOrderDetail(orderId: String) = "part_order/$orderId"
 
     fun serviceBookingDetail(bookingId: String) = "service_booking_order/$bookingId"
+
+    fun requestDetail(requestId: String) = "request_detail/$requestId"
 }

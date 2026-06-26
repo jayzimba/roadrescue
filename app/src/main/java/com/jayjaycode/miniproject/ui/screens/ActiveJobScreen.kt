@@ -26,24 +26,25 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.jayjaycode.miniproject.data.RequestType
 import com.google.android.gms.maps.model.LatLng
+import com.jayjaycode.miniproject.data.CompletionParty
+import com.jayjaycode.miniproject.data.RequestType
+import com.jayjaycode.miniproject.ui.components.AppTopBar
 import com.jayjaycode.miniproject.ui.components.BreakdownPhotoStrip
 import com.jayjaycode.miniproject.ui.components.JobTrackingMap
 import com.jayjaycode.miniproject.ui.components.PriceTag
 import com.jayjaycode.miniproject.ui.components.RescueMap
 import com.jayjaycode.miniproject.ui.components.StatChip
+import com.jayjaycode.miniproject.ui.screens.auth.AuthErrorBanner
 import com.jayjaycode.miniproject.ui.theme.GreenAccent
+import com.jayjaycode.miniproject.ui.theme.OrangePrimary
 import com.jayjaycode.miniproject.ui.theme.TextSecondary
 import com.jayjaycode.miniproject.ui.viewmodel.RescueViewModel
 import com.jayjaycode.miniproject.util.CurrencyFormatter
@@ -51,34 +52,39 @@ import com.jayjaycode.miniproject.util.CurrencyFormatter
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActiveJobScreen(
-    onDone: () -> Unit,
-    viewModel: RescueViewModel = viewModel(),
+    viewModel: RescueViewModel,
+    onBrowseApp: () -> Unit,
 ) {
     val job by viewModel.acceptedJob.collectAsState()
-    val trackingProgress by viewModel.trackingProgress.collectAsState()
-    val remainingEta by viewModel.remainingEta.collectAsState()
-
-    LaunchedEffect(job) {
-        if (job == null) onDone()
-    }
-
+    val actionError by viewModel.actionError.collectAsState()
     val activeJob = job ?: return
+
     val isTowing = activeJob.request.type == RequestType.TOWING
-    val displayEta = if (remainingEta > 0) remainingEta else activeJob.acceptedBid.etaMinutes
     val photoUrls = activeJob.request.photoUris.filter { it.isNotBlank() }
     val pickup = LatLng(activeJob.request.latitude, activeJob.request.longitude)
-    val approachFactor = 1f - trackingProgress
     val providerPosition = LatLng(
-        pickup.latitude + approachFactor * 0.015,
-        pickup.longitude + approachFactor * 0.015,
+        pickup.latitude + 0.008,
+        pickup.longitude + 0.008,
     )
+    val request = activeJob.request
+    val completionLabel = viewModel.customerCompletionActionLabel(request)
+    val pendingMessage = viewModel.customerCompletionPendingMessage(request)
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-    ) {
+    Scaffold(
+        topBar = {
+            AppTopBar(
+                title = if (isTowing) "Towing job" else "Mechanic job",
+                onBack = onBrowseApp,
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+        ) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = GreenAccent.copy(alpha = 0.12f)),
@@ -93,7 +99,7 @@ fun ActiveJobScreen(
                     Column {
                         Text("Request accepted!", fontWeight = FontWeight.Bold)
                         Text(
-                            "${activeJob.mechanicShop.name} is on the way",
+                            "${activeJob.mechanicShop.name} is en route",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary,
                         )
@@ -113,18 +119,28 @@ fun ActiveJobScreen(
             Spacer(Modifier.height(12.dp))
 
             JobTrackingMap(
-                progress = trackingProgress,
+                progress = null,
                 providerName = activeJob.mechanicShop.name,
-                etaMinutes = displayEta,
+                etaMinutes = activeJob.acceptedBid.etaMinutes,
                 isTowing = isTowing,
             )
 
             Spacer(Modifier.height(16.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatChip("ETA", "$displayEta min", highlight = true)
+                StatChip("ETA", "${activeJob.acceptedBid.etaMinutes} min", highlight = true)
                 StatChip("Distance", "${"%.1f".format(activeJob.acceptedBid.distanceKm)} km")
                 StatChip("Price", CurrencyFormatter.formatCompact(activeJob.acceptedBid.price))
+            }
+
+            pendingMessage?.let {
+                Spacer(Modifier.height(12.dp))
+                Text(it, color = OrangePrimary, style = MaterialTheme.typography.bodySmall)
+            }
+
+            actionError?.let {
+                Spacer(Modifier.height(8.dp))
+                AuthErrorBanner(it)
             }
 
             Spacer(Modifier.height(16.dp))
@@ -141,14 +157,6 @@ fun ActiveJobScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(activeJob.request.problemDescription, style = MaterialTheme.typography.bodyMedium)
-                    if (activeJob.request.damageDescription.isNotBlank()) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            activeJob.request.damageDescription,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
-                        )
-                    }
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.LocationOn, null, tint = TextSecondary, modifier = Modifier.height(18.dp))
@@ -164,12 +172,7 @@ fun ActiveJobScreen(
 
             if (photoUrls.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
-                Text("Your photos", fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(8.dp))
-                BreakdownPhotoStrip(
-                    photoUrls = photoUrls,
-                    height = 72.dp,
-                )
+                BreakdownPhotoStrip(photoUrls = photoUrls, height = 72.dp)
             }
 
             Spacer(Modifier.height(12.dp))
@@ -177,8 +180,6 @@ fun ActiveJobScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(activeJob.mechanicShop.name, fontWeight = FontWeight.Bold)
-                    Text("★ ${activeJob.mechanicShop.rating} · ${activeJob.mechanicShop.reviewCount} reviews")
-                    Spacer(Modifier.height(8.dp))
                     PriceTag(activeJob.acceptedBid.price)
                     Text(activeJob.acceptedBid.message, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                     Spacer(Modifier.height(12.dp))
@@ -192,14 +193,36 @@ fun ActiveJobScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            Button(
-                onClick = {
-                    viewModel.completeJobAndClear()
-                    onDone()
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Back to home")
+            when (completionLabel) {
+                "Confirm completion" -> {
+                    Button(
+                        onClick = { viewModel.confirmJobCompletion() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Confirm job complete")
+                    }
+                }
+                "Mark job complete" -> {
+                    Button(
+                        onClick = { viewModel.requestJobCompletion() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Mark job complete")
+                    }
+                }
+                else -> {
+                    if (request.completionRequestedBy == CompletionParty.CUSTOMER) {
+                        OutlinedButton(onClick = {}, modifier = Modifier.fillMaxWidth(), enabled = false) {
+                            Text("Waiting for provider confirmation")
+                        }
+                    }
+                }
             }
+
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onBrowseApp, modifier = Modifier.fillMaxWidth()) {
+                Text("Browse app")
+            }
+        }
     }
 }

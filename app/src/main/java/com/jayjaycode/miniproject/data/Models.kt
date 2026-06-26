@@ -4,6 +4,8 @@ enum class RequestType { TOWING, MECHANIC }
 
 enum class RequestStatus { DRAFT, BIDDING, ACCEPTED, IN_PROGRESS, COMPLETED, CANCELLED }
 
+enum class CompletionParty { CUSTOMER, PROVIDER }
+
 enum class BusinessType(val label: String, val description: String) {
     AUTO_COMPANY("Auto company", "Fleet towing & roadside recovery"),
     MECHANIC("Mobile mechanic", "On-site repairs and diagnostics"),
@@ -87,6 +89,7 @@ data class BreakdownRequest(
     val biddingEndsAtMillis: Long = 0L,
     val autoAcceptLowestBid: Boolean = false,
     val acceptedShopId: String = "",
+    val completionRequestedBy: CompletionParty? = null,
 )
 
 enum class ProviderBidOutcome {

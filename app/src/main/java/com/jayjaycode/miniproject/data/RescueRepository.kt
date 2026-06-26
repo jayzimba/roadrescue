@@ -16,7 +16,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -207,7 +209,7 @@ class RescueRepository(
                     stopBiddingJobs()
                 }
 
-                if (request.status == RequestStatus.CANCELLED) {
+                if (request.status == RequestStatus.CANCELLED || request.status == RequestStatus.COMPLETED) {
                     clearActiveSession()
                 }
             }
@@ -335,13 +337,72 @@ class RescueRepository(
     }
 
     suspend fun completeActiveJob() {
+        requestJobCompletionByCustomer()
+    }
+
+    suspend fun requestJobCompletionByCustomer() {
         val requestId = _activeRequestId.value ?: return
+        val request = _activeRequest.value ?: return
+        if (request.status == RequestStatus.COMPLETED) return
+        if (request.completionRequestedBy == CompletionParty.CUSTOMER) return
+
+        if (request.completionRequestedBy == CompletionParty.PROVIDER) {
+            finishJob(requestId)
+            return
+        }
+
         firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS)
             .document(requestId)
-            .update("status", RequestStatus.COMPLETED.name)
-            .await()
-        clearActiveSession()
+            .update(
+                mapOf(
+                    "completionRequestedBy" to CompletionParty.CUSTOMER.name,
+                    "status" to RequestStatus.IN_PROGRESS.name,
+                ),
+            ).await()
+    }
+
+    suspend fun confirmJobCompletionByCustomer(requestId: String? = null) {
+        val id = requestId ?: _activeRequestId.value ?: return
+        val request = if (id == _activeRequestId.value) {
+            _activeRequest.value
+        } else {
+            fetchBreakdownRequest(id)
+        } ?: return
+        if (request.completionRequestedBy != CompletionParty.PROVIDER) return
+        finishJob(id)
+    }
+
+    private suspend fun finishJob(requestId: String) {
+        firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS)
+            .document(requestId)
+            .update(
+                mapOf(
+                    "status" to RequestStatus.COMPLETED.name,
+                    "completionRequestedBy" to FieldValue.delete(),
+                    "completedAt" to FieldValue.serverTimestamp(),
+                ),
+            ).await()
+        if (_activeRequestId.value == requestId) {
+            clearActiveSession()
+        }
         refreshRequestHistory()
+    }
+
+    suspend fun fetchBreakdownRequest(requestId: String): BreakdownRequest? {
+        val doc = firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS)
+            .document(requestId)
+            .get()
+            .await()
+        return FirestoreMappers.requestFromDocument(doc)
+    }
+
+    fun observeBreakdownRequest(requestId: String): Flow<BreakdownRequest?> = callbackFlow {
+        val listener = firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS)
+            .document(requestId)
+            .addSnapshotListener { snapshot, _ ->
+                trySend(snapshot?.let { FirestoreMappers.requestFromDocument(it) })
+            }
+        awaitClose { listener.remove() }
     }
 
     suspend fun refreshRequestHistory() {
@@ -393,7 +454,7 @@ class RescueRepository(
             scope.launch { maybeAutoAcceptLowestBid() }
         }
 
-        if (request.status == RequestStatus.ACCEPTED) {
+        if (request.status == RequestStatus.ACCEPTED || request.status == RequestStatus.IN_PROGRESS) {
             val acceptedMap = doc.get("acceptedBid") as? Map<String, Any>
             val bid = FirestoreMappers.acceptedBidFromMap(acceptedMap) ?: return
             scope.launch {

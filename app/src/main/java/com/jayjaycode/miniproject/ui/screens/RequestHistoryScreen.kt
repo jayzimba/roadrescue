@@ -1,5 +1,6 @@
 package com.jayjaycode.miniproject.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +52,7 @@ import java.util.Locale
 @Composable
 fun RequestHistoryScreen(
     onBack: () -> Unit,
+    onOpenRequest: (String) -> Unit,
     viewModel: RequestHistoryViewModel = viewModel(),
 ) {
     val history by viewModel.history.collectAsState()
@@ -93,7 +95,10 @@ fun RequestHistoryScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(history, key = { it.id }) { request ->
-                        HistoryRequestCard(request)
+                        HistoryRequestCard(
+                            request = request,
+                            onClick = { onOpenRequest(request.id) },
+                        )
                     }
                 }
             }
@@ -102,12 +107,14 @@ fun RequestHistoryScreen(
 }
 
 @Composable
-private fun HistoryRequestCard(request: BreakdownRequest) {
+private fun HistoryRequestCard(request: BreakdownRequest, onClick: () -> Unit) {
     val dateFormat = SimpleDateFormat("dd MMM yyyy · HH:mm", Locale.getDefault())
     val isTowing = request.type == RequestType.TOWING
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {

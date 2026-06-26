@@ -29,6 +29,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
@@ -51,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jayjaycode.miniproject.data.BreakdownRequest
+import com.jayjaycode.miniproject.data.CompletionParty
 import com.jayjaycode.miniproject.data.OrderStatus
 import com.jayjaycode.miniproject.data.PartOrder
 import com.jayjaycode.miniproject.data.ProviderBidEntry
@@ -174,7 +176,11 @@ fun ProviderDashboardScreen(
 
             when (selectedTab) {
                 0 -> OpenJobsTab(openJobs, onBid = { bidTarget = it })
-                1 -> ProviderJobsTab(providerBidEntries, providerJobs)
+                1 -> ProviderJobsTab(
+                    bidEntries = providerBidEntries,
+                    activeJobs = providerJobs,
+                    viewModel = viewModel,
+                )
                 2 -> ListingsTab(myParts, myServices, onToggleStock = { id, stock ->
                     viewModel.togglePartStock(id, stock)
                 })
@@ -219,6 +225,7 @@ private fun OpenJobsTab(jobs: List<BreakdownRequest>, onBid: (BreakdownRequest) 
 private fun ProviderJobsTab(
     bidEntries: List<ProviderBidEntry>,
     activeJobs: List<BreakdownRequest>,
+    viewModel: ProviderViewModel,
 ) {
     val pendingBids = bidEntries.filter { it.outcome == ProviderBidOutcome.PENDING }
     val wonBids = bidEntries.filter { it.outcome == ProviderBidOutcome.WON }
@@ -254,7 +261,7 @@ private fun ProviderJobsTab(
                 Text("Active jobs", fontWeight = FontWeight.SemiBold)
             }
             items(activeJobs, key = { "active-${it.id}" }) { job ->
-                JobCard(job, actionLabel = null, onAction = {})
+                ActiveProviderJobCard(job = job, viewModel = viewModel)
             }
         } else if (wonNotInActive.isNotEmpty()) {
             item {
@@ -262,7 +269,7 @@ private fun ProviderJobsTab(
                 Text("Won bids", fontWeight = FontWeight.SemiBold)
             }
             items(wonNotInActive, key = { "won-${it.requestId}" }) { entry ->
-                ProviderBidCard(entry)
+                ProviderBidCard(entry, viewModel = viewModel)
             }
         }
 
@@ -279,7 +286,60 @@ private fun ProviderJobsTab(
 }
 
 @Composable
-private fun ProviderBidCard(entry: ProviderBidEntry) {
+private fun ActiveProviderJobCard(
+    job: BreakdownRequest,
+    viewModel: ProviderViewModel,
+) {
+    Card(shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            JobCard(job, actionLabel = null, onAction = {})
+            ProviderCompletionActions(job = job, viewModel = viewModel)
+        }
+    }
+}
+
+@Composable
+private fun ProviderCompletionActions(
+    job: BreakdownRequest,
+    viewModel: ProviderViewModel,
+) {
+    val pendingMessage = viewModel.providerCompletionPendingMessage(job)
+    val actionLabel = viewModel.providerCompletionActionLabel(job)
+    pendingMessage?.let {
+        Text(it, style = MaterialTheme.typography.bodySmall, color = OrangePrimary)
+    }
+    when (actionLabel) {
+        "Confirm completion" -> {
+            Button(
+                onClick = { viewModel.confirmJobCompletion(job.id) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Confirm job complete")
+            }
+        }
+        "Mark job complete" -> {
+            Button(
+                onClick = { viewModel.requestJobCompletion(job.id) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Mark job complete")
+            }
+        }
+        else -> {
+            if (job.completionRequestedBy == CompletionParty.PROVIDER) {
+                OutlinedButton(onClick = {}, modifier = Modifier.fillMaxWidth(), enabled = false) {
+                    Text("Waiting for customer confirmation")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProviderBidCard(
+    entry: ProviderBidEntry,
+    viewModel: ProviderViewModel? = null,
+) {
     val request = entry.request
     val outcomeLabel = when (entry.outcome) {
         ProviderBidOutcome.PENDING -> "Awaiting customer"
@@ -331,6 +391,11 @@ private fun ProviderBidCard(entry: ProviderBidEntry) {
                 Column(horizontalAlignment = Alignment.End) {
                     Text("ETA ${entry.bid.etaMinutes} min", style = MaterialTheme.typography.bodySmall)
                     Text(entry.bid.message, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                }
+            }
+            if (viewModel != null && entry.outcome == ProviderBidOutcome.WON) {
+                entry.request?.let { request ->
+                    ProviderCompletionActions(job = request, viewModel = viewModel)
                 }
             }
         }

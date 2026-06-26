@@ -14,6 +14,7 @@ import com.jayjaycode.miniproject.data.PartOrder
 import com.jayjaycode.miniproject.data.PartOrderLineItem
 import com.jayjaycode.miniproject.data.PaymentMethod
 import com.jayjaycode.miniproject.data.RequestStatus
+import com.jayjaycode.miniproject.data.CompletionParty
 import com.jayjaycode.miniproject.data.RequestType
 import com.jayjaycode.miniproject.data.ServiceBookingOrder
 import com.jayjaycode.miniproject.data.ServicePackage
@@ -93,6 +94,9 @@ object FirestoreMappers {
             biddingEndsAtMillis = doc.getTimestamp("biddingEndsAt")?.toDate()?.time ?: 0L,
             autoAcceptLowestBid = doc.getBoolean("autoAcceptLowestBid") ?: false,
             acceptedShopId = doc.getString("acceptedShopId").orEmpty(),
+            completionRequestedBy = doc.getString("completionRequestedBy")?.let { value ->
+                runCatching { CompletionParty.valueOf(value) }.getOrNull()
+            },
         )
     }
 

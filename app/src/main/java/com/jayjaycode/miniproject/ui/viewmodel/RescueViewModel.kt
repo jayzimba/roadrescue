@@ -6,13 +6,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jayjaycode.miniproject.data.ActiveJob
 import com.jayjaycode.miniproject.data.BreakdownRequest
+import com.jayjaycode.miniproject.data.CompletionParty
 import com.jayjaycode.miniproject.data.MechanicBid
 import com.jayjaycode.miniproject.data.RequestStatus
 import com.jayjaycode.miniproject.data.RequestType
 import com.jayjaycode.miniproject.data.RescueRepository
 import com.jayjaycode.miniproject.data.VehicleInfo
 import com.jayjaycode.miniproject.data.firebase.FirestoreConstants
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -41,6 +41,10 @@ class RescueViewModel(
     val acceptedJob: StateFlow<ActiveJob?> = repository.acceptedJob
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    val isActiveJobVisible: StateFlow<Boolean> = acceptedJob
+        .map { it != null }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     val lowestBid: StateFlow<MechanicBid?> = bids
         .map { it.firstOrNull() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -48,17 +52,14 @@ class RescueViewModel(
     private val _biddingOverlayExpanded = MutableStateFlow(false)
     val biddingOverlayExpanded: StateFlow<Boolean> = _biddingOverlayExpanded.asStateFlow()
 
+    private val _activeJobOverlayExpanded = MutableStateFlow(false)
+    val activeJobOverlayExpanded: StateFlow<Boolean> = _activeJobOverlayExpanded.asStateFlow()
+
     private val _isSubmitting = MutableStateFlow(false)
     val isSubmitting: StateFlow<Boolean> = _isSubmitting.asStateFlow()
 
     private val _submitError = MutableStateFlow<String?>(null)
     val submitError: StateFlow<String?> = _submitError.asStateFlow()
-
-    private val _trackingProgress = MutableStateFlow(0f)
-    val trackingProgress: StateFlow<Float> = _trackingProgress.asStateFlow()
-
-    private val _remainingEta = MutableStateFlow(0)
-    val remainingEta: StateFlow<Int> = _remainingEta.asStateFlow()
 
     private val _actionError = MutableStateFlow<String?>(null)
     val actionError: StateFlow<String?> = _actionError.asStateFlow()
@@ -83,6 +84,14 @@ class RescueViewModel(
 
     fun toggleBiddingOverlay() {
         _biddingOverlayExpanded.value = !_biddingOverlayExpanded.value
+    }
+
+    fun setActiveJobOverlayExpanded(expanded: Boolean) {
+        _activeJobOverlayExpanded.value = expanded
+    }
+
+    fun toggleActiveJobOverlay() {
+        _activeJobOverlayExpanded.value = !_activeJobOverlayExpanded.value
     }
 
     fun clearSubmitError() {
@@ -137,7 +146,7 @@ class RescueViewModel(
             runCatching { repository.acceptBid(bid) }
                 .onSuccess {
                     _biddingOverlayExpanded.value = false
-                    startTrackingSimulation(bid.etaMinutes)
+                    _activeJobOverlayExpanded.value = true
                 }
                 .onFailure { _actionError.value = it.localizedMessage ?: "Could not accept bid" }
         }
@@ -168,36 +177,41 @@ class RescueViewModel(
         }
     }
 
-    private fun startTrackingSimulation(totalEtaMinutes: Int) {
-        viewModelScope.launch {
-            _remainingEta.value = totalEtaMinutes
-            _trackingProgress.value = 0f
-            val steps = (totalEtaMinutes * 2).coerceAtLeast(10)
-            repeat(steps) {
-                delay(2000)
-                _trackingProgress.value = ((it + 1).toFloat() / steps).coerceAtMost(1f)
-                _remainingEta.value = ((1f - _trackingProgress.value) * totalEtaMinutes).toInt().coerceAtLeast(0)
-            }
-            _trackingProgress.value = 1f
-            _remainingEta.value = 0
-        }
-    }
-
     fun cancelRequest(onDone: () -> Unit = {}) {
         viewModelScope.launch {
             repository.cancelRequest()
             _biddingOverlayExpanded.value = false
-            _trackingProgress.value = 0f
-            _remainingEta.value = 0
+            _activeJobOverlayExpanded.value = false
             onDone()
         }
     }
 
-    fun completeJobAndClear() {
+    fun requestJobCompletion() {
         viewModelScope.launch {
-            repository.completeActiveJob()
-            _trackingProgress.value = 0f
-            _remainingEta.value = 0
+            _actionError.value = null
+            runCatching { repository.requestJobCompletionByCustomer() }
+                .onFailure { _actionError.value = it.localizedMessage ?: "Could not request completion" }
         }
+    }
+
+    fun confirmJobCompletion() {
+        viewModelScope.launch {
+            _actionError.value = null
+            runCatching { repository.confirmJobCompletionByCustomer() }
+                .onSuccess { _activeJobOverlayExpanded.value = false }
+                .onFailure { _actionError.value = it.localizedMessage ?: "Could not confirm completion" }
+        }
+    }
+
+    fun customerCompletionActionLabel(request: BreakdownRequest?): String? = when (request?.completionRequestedBy) {
+        null -> "Mark job complete"
+        CompletionParty.CUSTOMER -> null
+        CompletionParty.PROVIDER -> "Confirm completion"
+    }
+
+    fun customerCompletionPendingMessage(request: BreakdownRequest?): String? = when (request?.completionRequestedBy) {
+        CompletionParty.CUSTOMER -> "Waiting for provider to confirm completion"
+        CompletionParty.PROVIDER -> "Provider marked job done — confirm to close"
+        else -> null
     }
 }

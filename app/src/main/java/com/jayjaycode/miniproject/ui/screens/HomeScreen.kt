@@ -94,6 +94,7 @@ fun HomeScreen(
             RescueMap(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 userLocation = LusakaCenter,
+                showMyLocation = false,
                 height = 180.dp,
             )
         }
