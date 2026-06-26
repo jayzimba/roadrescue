@@ -2,9 +2,9 @@ package com.jayjaycode.miniproject.ui
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -13,10 +13,12 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.jayjaycode.miniproject.ui.components.AppTopBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -27,12 +29,19 @@ import androidx.navigation.navArgument
 import com.jayjaycode.miniproject.data.RequestType
 import com.jayjaycode.miniproject.ui.navigation.NavRoutes
 import com.jayjaycode.miniproject.ui.screens.ActiveJobScreen
+import com.jayjaycode.miniproject.ui.screens.AddPartListingScreen
+import com.jayjaycode.miniproject.ui.screens.AddServiceListingScreen
 import com.jayjaycode.miniproject.ui.screens.BiddingScreen
 import com.jayjaycode.miniproject.ui.screens.HomeScreen
 import com.jayjaycode.miniproject.ui.screens.MarketplaceScreen
+import com.jayjaycode.miniproject.ui.screens.PartListingDetailRoute
+import com.jayjaycode.miniproject.ui.screens.ProfileScreen
+import com.jayjaycode.miniproject.ui.screens.ProviderDashboardScreen
+import com.jayjaycode.miniproject.ui.screens.RegisterBusinessScreen
 import com.jayjaycode.miniproject.ui.screens.RequestFormScreen
 import com.jayjaycode.miniproject.ui.screens.RequestHistoryScreen
 import com.jayjaycode.miniproject.ui.screens.ServiceBookingScreen
+import com.jayjaycode.miniproject.ui.viewmodel.MarketplaceViewModel
 
 private val bottomNavRoutes = setOf(NavRoutes.HOME, NavRoutes.MARKETPLACE, NavRoutes.SERVICE_BOOKING)
 
@@ -40,25 +49,22 @@ private val bottomNavRoutes = setOf(NavRoutes.HOME, NavRoutes.MARKETPLACE, NavRo
 @Composable
 fun RoadRescueApp(
     userName: String,
+    userEmail: String,
     onSignOut: () -> Unit,
 ) {
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route?.substringBefore("/")
     val showBottomBar = currentRoute in bottomNavRoutes
+    val showMainTopBar = showBottomBar
 
     Scaffold(
         topBar = {
-            if (showBottomBar) {
-                TopAppBar(
-                    title = {
-                        Text(
-                            if (userName.contains("@")) "RoadRescue" else "Hi, ${userName.substringBefore(" ")}",
-                        )
-                    },
+            if (showMainTopBar) {
+                AppTopBar(
                     actions = {
-                        IconButton(onClick = onSignOut) {
-                            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Sign out")
+                        IconButton(onClick = { navController.navigate(NavRoutes.PROFILE) }) {
+                            Icon(Icons.Default.Person, contentDescription = "Profile")
                         }
                     },
                 )
@@ -180,8 +186,65 @@ fun RoadRescueApp(
                 RequestHistoryScreen(onBack = { navController.popBackStack() })
             }
 
-            composable(NavRoutes.MARKETPLACE) { MarketplaceScreen() }
+            composable(NavRoutes.MARKETPLACE) {
+                MarketplaceScreen(
+                    onPartClick = { partId ->
+                        navController.navigate(NavRoutes.partListing(partId))
+                    },
+                )
+            }
+
+            composable(
+                route = NavRoutes.PART_LISTING_DETAIL,
+                arguments = listOf(navArgument("partId") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val partId = backStackEntry.arguments?.getString("partId").orEmpty()
+                val parentEntry = remember(backStackEntry) {
+                    navController.getBackStackEntry(NavRoutes.MARKETPLACE)
+                }
+                val marketplaceViewModel: MarketplaceViewModel = viewModel(parentEntry)
+                PartListingDetailRoute(
+                    partId = partId,
+                    viewModel = marketplaceViewModel,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
             composable(NavRoutes.SERVICE_BOOKING) { ServiceBookingScreen() }
+
+            composable(NavRoutes.PROFILE) {
+                ProfileScreen(
+                    userName = userName,
+                    userEmail = userEmail,
+                    onBack = { navController.popBackStack() },
+                    onRegisterBusiness = { navController.navigate(NavRoutes.REGISTER_BUSINESS) },
+                    onOpenDashboard = { navController.navigate(NavRoutes.PROVIDER_DASHBOARD) },
+                    onSignOut = onSignOut,
+                )
+            }
+
+            composable(NavRoutes.REGISTER_BUSINESS) {
+                RegisterBusinessScreen(
+                    onBack = { navController.popBackStack() },
+                    onRegistered = { navController.popBackStack() },
+                )
+            }
+
+            composable(NavRoutes.PROVIDER_DASHBOARD) {
+                ProviderDashboardScreen(
+                    onBack = { navController.popBackStack() },
+                    onAddPart = { navController.navigate(NavRoutes.ADD_PART_LISTING) },
+                    onAddService = { navController.navigate(NavRoutes.ADD_SERVICE_LISTING) },
+                )
+            }
+
+            composable(NavRoutes.ADD_PART_LISTING) {
+                AddPartListingScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(NavRoutes.ADD_SERVICE_LISTING) {
+                AddServiceListingScreen(onBack = { navController.popBackStack() })
+            }
         }
     }
 }

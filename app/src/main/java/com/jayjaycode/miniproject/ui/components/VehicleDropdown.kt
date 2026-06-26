@@ -5,9 +5,9 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.ui.graphics.Color
 import com.jayjaycode.miniproject.ui.theme.formOutlinedTextFieldColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -53,7 +53,7 @@ fun VehicleDropdown(
         ) {
             options.forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(option, color = Color.Black) },
+                    text = { Text(option, color = MaterialTheme.colorScheme.onSurface) },
                     onClick = {
                         onSelected(option)
                         expanded = false

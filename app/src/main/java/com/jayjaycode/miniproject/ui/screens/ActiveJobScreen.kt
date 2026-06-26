@@ -79,18 +79,12 @@ fun ActiveJobScreen(
         pickup.longitude + approachFactor * 0.015,
     )
 
-    Scaffold(
-        topBar = {
-            TopAppBar(title = { Text(if (isTowing) "Tow truck en route" else "Mechanic en route") })
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-        ) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+    ) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = GreenAccent.copy(alpha = 0.12f)),
@@ -224,6 +218,5 @@ fun ActiveJobScreen(
             ) {
                 Text("Back to home")
             }
-        }
     }
 }

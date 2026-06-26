@@ -3,6 +3,7 @@ package com.jayjaycode.miniproject.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseUser
+import com.jayjaycode.miniproject.data.BusinessRepository
 import com.jayjaycode.miniproject.data.RescueRepository
 import com.jayjaycode.miniproject.data.auth.AuthRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,7 +23,12 @@ sealed interface AuthUiState {
 class AuthViewModel(
     private val repository: AuthRepository = AuthRepository(),
     private val rescueRepository: RescueRepository = RescueRepository.instance,
+    private val businessRepository: BusinessRepository = BusinessRepository.instance,
 ) : ViewModel() {
+
+    init {
+        businessRepository.startObservingProfile()
+    }
 
     val authState: StateFlow<AuthUiState> = repository.authState
         .map { user ->
@@ -39,8 +45,36 @@ class AuthViewModel(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    private val _isResetLoading = MutableStateFlow(false)
+    val isResetLoading: StateFlow<Boolean> = _isResetLoading.asStateFlow()
+
+    private val _resetSuccessMessage = MutableStateFlow<String?>(null)
+    val resetSuccessMessage: StateFlow<String?> = _resetSuccessMessage.asStateFlow()
+
     fun clearError() {
         _errorMessage.value = null
+    }
+
+    fun clearResetState() {
+        _errorMessage.value = null
+        _resetSuccessMessage.value = null
+    }
+
+    fun sendPasswordReset(email: String) {
+        viewModelScope.launch {
+            _isResetLoading.value = true
+            _errorMessage.value = null
+            _resetSuccessMessage.value = null
+            try {
+                repository.sendPasswordResetEmail(email).getOrThrow()
+                _resetSuccessMessage.value =
+                    "Password reset link sent to $email. Check your inbox and spam folder."
+            } catch (e: Exception) {
+                _errorMessage.value = e.localizedMessage ?: "Could not send reset email"
+            } finally {
+                _isResetLoading.value = false
+            }
+        }
     }
 
     fun signIn(email: String, password: String, onSuccess: () -> Unit) {
@@ -84,6 +118,7 @@ class AuthViewModel(
 
     fun signOut() {
         rescueRepository.clearActiveSession()
+        businessRepository.clearSession()
         repository.signOut()
     }
 }

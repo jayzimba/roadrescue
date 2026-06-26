@@ -135,4 +135,11 @@ object ZambianVehicleCatalog {
     }
 
     fun modelsFor(make: String): List<String> = catalog[make]?.sorted() ?: emptyList()
+
+    fun makeOptions(): List<String> = listOf(VehicleCompatibility.ALL_MAKES) + makes
+
+    fun modelOptionsFor(make: String): List<String> = when (make) {
+        "", VehicleCompatibility.ALL_MAKES -> listOf(VehicleCompatibility.ALL_MODELS)
+        else -> listOf(VehicleCompatibility.ALL_MODELS) + modelsFor(make)
+    }
 }

@@ -17,6 +17,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.jayjaycode.miniproject.ui.components.SpannerLoader
 import com.jayjaycode.miniproject.ui.navigation.AuthRoutes
+import com.jayjaycode.miniproject.ui.screens.auth.ForgotPasswordScreen
 import com.jayjaycode.miniproject.ui.screens.auth.LoginScreen
 import com.jayjaycode.miniproject.ui.screens.auth.SignUpScreen
 import com.jayjaycode.miniproject.ui.theme.NavyDark
@@ -49,6 +50,7 @@ fun RoadRescueRoot(
             RoadRescueApp(
                 userName = state.user.displayName?.takeIf { it.isNotBlank() }
                     ?: state.user.email.orEmpty(),
+                userEmail = state.user.email.orEmpty(),
                 onSignOut = { authViewModel.signOut() },
             )
         }
@@ -66,6 +68,7 @@ private fun AuthNavHost() {
         composable(AuthRoutes.LOGIN) {
             LoginScreen(
                 onNavigateToSignUp = { navController.navigate(AuthRoutes.SIGN_UP) },
+                onNavigateToForgotPassword = { navController.navigate(AuthRoutes.FORGOT_PASSWORD) },
                 onLoginSuccess = { /* auth state flow handles navigation */ },
             )
         }
@@ -73,6 +76,11 @@ private fun AuthNavHost() {
             SignUpScreen(
                 onBack = { navController.popBackStack() },
                 onSignUpSuccess = { /* Firebase signs in automatically; auth flow navigates to app */ },
+            )
+        }
+        composable(AuthRoutes.FORGOT_PASSWORD) {
+            ForgotPasswordScreen(
+                onBack = { navController.popBackStack() },
             )
         }
     }

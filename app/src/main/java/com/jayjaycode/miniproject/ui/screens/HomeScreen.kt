@@ -28,14 +28,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jayjaycode.miniproject.data.MechanicShop
-import com.jayjaycode.miniproject.data.MockRepository
 import com.jayjaycode.miniproject.ui.components.LusakaCenter
 import com.jayjaycode.miniproject.ui.components.OnlineBadge
 import com.jayjaycode.miniproject.ui.components.RescueMap
@@ -44,6 +46,7 @@ import com.jayjaycode.miniproject.ui.theme.GreenAccent
 import com.jayjaycode.miniproject.ui.theme.NavyDark
 import com.jayjaycode.miniproject.ui.theme.OrangePrimary
 import com.jayjaycode.miniproject.ui.theme.TextSecondary
+import com.jayjaycode.miniproject.ui.viewmodel.HomeViewModel
 
 @Composable
 fun HomeScreen(
@@ -52,7 +55,9 @@ fun HomeScreen(
     onOpenHistory: () -> Unit,
     onOpenMarketplace: () -> Unit,
     onBookService: () -> Unit,
+    viewModel: HomeViewModel = viewModel(),
 ) {
+    val registeredShops by viewModel.registeredShops.collectAsState()
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 24.dp),
@@ -158,11 +163,22 @@ fun HomeScreen(
         }
 
         item {
-            SectionTitle("Nearby shops", "Only online shops can bid on your request")
+            SectionTitle("Registered providers", "Online providers can bid on your rescue requests")
         }
 
-        items(MockRepository.onlineShops) { shop ->
-            ShopCard(shop, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        if (registeredShops.isEmpty()) {
+            item {
+                Text(
+                    "No providers registered yet. Businesses can sign up from Profile → Register business.",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                )
+            }
+        } else {
+            items(registeredShops, key = { it.id }) { shop ->
+                ShopCard(shop, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            }
         }
     }
 }
@@ -214,8 +230,13 @@ private fun ShopCard(shop: MechanicShop, modifier: Modifier = Modifier) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(shop.name, fontWeight = FontWeight.SemiBold)
+                val ratingLine = buildString {
+                    append("★ ${shop.rating}")
+                    if (shop.reviewCount > 0) append(" · ${shop.reviewCount} reviews")
+                    if (shop.distanceKm > 0) append(" · ${"%.1f".format(shop.distanceKm)} km")
+                }
                 Text(
-                    "★ ${shop.rating} · ${shop.reviewCount} reviews · ${"%.1f".format(shop.distanceKm)} km",
+                    ratingLine,
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary,
                 )

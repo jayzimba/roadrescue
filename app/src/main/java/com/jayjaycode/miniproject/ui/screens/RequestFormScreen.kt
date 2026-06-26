@@ -39,6 +39,7 @@ import com.jayjaycode.miniproject.data.VehicleInfo
 import com.jayjaycode.miniproject.data.ZambianVehicleCatalog
 import com.jayjaycode.miniproject.ui.screens.auth.AuthErrorBanner
 import com.jayjaycode.miniproject.ui.theme.formOutlinedTextFieldColors
+import com.jayjaycode.miniproject.ui.components.AppTopBar
 import com.jayjaycode.miniproject.ui.components.LocationSection
 import com.jayjaycode.miniproject.ui.components.PhotoPickerSection
 import com.jayjaycode.miniproject.ui.components.SpannerLoader
@@ -78,16 +79,7 @@ fun RequestFormScreen(
         latitude != null && longitude != null && !isSubmitting
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(title) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
-        },
+        topBar = { AppTopBar(onBack = onBack) },
     ) { padding ->
         Column(
             modifier = Modifier

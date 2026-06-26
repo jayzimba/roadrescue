@@ -255,7 +255,7 @@ fun AuthTextField(
             singleLine = true,
             isError = isError,
             shape = RoundedCornerShape(14.dp),
-            colors = formOutlinedTextFieldColors(),
+            colors = formOutlinedTextFieldColors(onLightSurface = true),
         )
         supportingText?.let {
             Text(
@@ -265,6 +265,22 @@ fun AuthTextField(
                 modifier = Modifier.padding(start = 4.dp, top = 4.dp),
             )
         }
+    }
+}
+
+@Composable
+fun AuthSuccessBanner(message: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = GreenAccent.copy(alpha = 0.15f),
+    ) {
+        Text(
+            message,
+            modifier = Modifier.padding(12.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = GreenAccent,
+        )
     }
 }
 

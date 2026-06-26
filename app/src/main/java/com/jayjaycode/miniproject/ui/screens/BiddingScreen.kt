@@ -72,17 +72,8 @@ fun BiddingScreen(
     val seconds = secondsLeft % 60
     val timerText = "%02d:%02d".format(minutes, seconds)
 
-    Scaffold(
-        topBar = {
-            TopAppBar(title = { Text("Shops are bidding…") })
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-        ) {
-            Card(
+    Column(modifier = Modifier.fillMaxSize()) {
+        Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
@@ -172,7 +163,6 @@ fun BiddingScreen(
                     Text("Cancel request")
                 }
             }
-        }
     }
 }
 

@@ -24,15 +24,32 @@ From the project root (with [Firebase CLI](https://firebase.google.com/docs/cli)
 
 ```bash
 firebase deploy --only firestore:rules,firestore:indexes
+firebase deploy --only storage
 ```
 
 Or copy `firestore.rules` and `firestore.indexes.json` into the Firebase Console under **Firestore → Rules** and **Indexes**.
+
+## Firebase Storage (business registration PDF)
+
+Business registration uploads the certificate to Storage. If you see **“Object does not exist at location”**, Storage is not enabled yet.
+
+1. [Firebase Console → Storage](https://console.firebase.google.com/project/remoterescue-1eb43/storage) → **Get started** (choose production mode and a region, e.g. `europe-west1` or nearest to Zambia).  
+2. From the project root:
+
+```bash
+firebase deploy --only storage
+```
+
+3. Download a fresh `google-services.json` if the storage bucket changed, replace `app/google-services.json`, and rebuild.
+
+Storage path: `business_certificates/{userId}/{shopId}/registration_certificate.pdf`
 
 ## Enable in Firebase Console
 
 1. **Firestore** — Create database (production mode), then deploy the rules above (or relax for testing).  
 2. **Authentication** — Email/Password enabled.  
-3. **Maps** — `MAPS_API_KEY` in `local.properties`; Maps SDK for Android enabled in Google Cloud.
+3. **Storage** — Required for provider business registration (see above).  
+4. **Maps** — `MAPS_API_KEY` in `local.properties`; Maps SDK for Android enabled in Google Cloud.
 
 ## `CONFIGURATION_NOT_FOUND` when signing up / signing in
 

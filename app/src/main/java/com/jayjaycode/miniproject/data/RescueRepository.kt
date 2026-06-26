@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import kotlin.random.Random
 
 class RescueRepository(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
@@ -32,7 +31,6 @@ class RescueRepository(
     private var bidsListener: ListenerRegistration? = null
     private var requestListener: ListenerRegistration? = null
     private var biddingTimerJob: Job? = null
-    private var bidSimulationJob: Job? = null
 
     private val _activeRequestId = MutableStateFlow<String?>(null)
     val activeRequestId: Flow<String?> = _activeRequestId.asStateFlow()
@@ -56,8 +54,6 @@ class RescueRepository(
     val isLoadingHistory: Flow<Boolean> = _isLoadingHistory.asStateFlow()
 
     val biddingDurationSeconds: Int get() = FirestoreConstants.BIDDING_DURATION_SECONDS
-
-    val onlineShops: List<MechanicShop> = MockRepository.onlineShops
 
     private fun requireUserId(): String =
         auth.currentUser?.uid ?: error("You must be signed in")
@@ -125,7 +121,6 @@ class RescueRepository(
         attachRequestListener(docRef.id)
         attachBidsListener(docRef.id)
         startBiddingTimer(biddingEndsAt)
-        startBidSimulation(docRef.id, type)
 
         refreshRequestHistory()
         return requestWithId
@@ -143,17 +138,10 @@ class RescueRepository(
                 if (request.status == RequestStatus.ACCEPTED || request.status == RequestStatus.IN_PROGRESS) {
                     val acceptedMap = snapshot.get("acceptedBid") as? Map<String, Any>
                     val bid = FirestoreMappers.acceptedBidFromMap(acceptedMap) ?: return@addSnapshotListener
-                    val shop = onlineShops.find { it.id == bid.shopId }
-                        ?: MechanicShop(
-                            id = bid.shopId,
-                            name = bid.shopName,
-                            rating = bid.shopRating,
-                            reviewCount = 0,
-                            isOnline = true,
-                            services = emptyList(),
-                            distanceKm = bid.distanceKm,
-                        )
-                    _acceptedJob.value = ActiveJob(request = request, acceptedBid = bid, mechanicShop = shop)
+                    scope.launch {
+                        val shop = resolveShop(bid)
+                        _acceptedJob.value = ActiveJob(request = request, acceptedBid = bid, mechanicShop = shop)
+                    }
                     _biddingSecondsLeft.value = 0
                     stopBiddingJobs()
                 }
@@ -191,41 +179,17 @@ class RescueRepository(
         }
     }
 
-    private fun startBidSimulation(requestId: String, type: RequestType) {
-        bidSimulationJob?.cancel()
-        bidSimulationJob = scope.launch {
-            val shops = onlineShops.filter { it.isOnline }
-            shops.forEachIndexed { index, shop ->
-                if (_acceptedJob.value != null) return@launch
-                delay(3000L * (index + 1))
-                if (_activeRequestId.value != requestId) return@launch
-
-                val bid = MechanicBid(
-                    id = "",
-                    shopId = shop.id,
-                    shopName = shop.name,
-                    shopRating = shop.rating,
-                    distanceKm = shop.distanceKm + Random.nextDouble(-0.5, 0.5),
-                    etaMinutes = (shop.distanceKm * 4).toInt() + Random.nextInt(5, 15),
-                    price = when (type) {
-                        RequestType.TOWING -> Random.nextDouble(1200.0, 3500.0)
-                        else -> Random.nextDouble(800.0, 2800.0)
-                    },
-                    message = listOf(
-                        "We can be there fast!",
-                        "Experienced with this issue",
-                        "Best price in your area",
-                        "Available now — ready to dispatch",
-                    ).random(),
-                )
-
-                firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS)
-                    .document(requestId)
-                    .collection(FirestoreConstants.BIDS)
-                    .add(FirestoreMappers.bidToMap(bid))
-                    .await()
-            }
-        }
+    private suspend fun resolveShop(bid: MechanicBid): MechanicShop {
+        BusinessRepository.instance.getShopById(bid.shopId)?.let { return it }
+        return MechanicShop(
+            id = bid.shopId,
+            name = bid.shopName,
+            rating = bid.shopRating,
+            reviewCount = 0,
+            isOnline = true,
+            services = emptyList(),
+            distanceKm = bid.distanceKm,
+        )
     }
 
     suspend fun acceptBid(bid: MechanicBid) {
@@ -239,20 +203,12 @@ class RescueRepository(
                 mapOf(
                     "status" to RequestStatus.ACCEPTED.name,
                     "acceptedBid" to FirestoreMappers.acceptedBidToMap(bid),
+                    "acceptedShopId" to bid.shopId,
                     "acceptedAt" to FieldValue.serverTimestamp(),
                 ),
             ).await()
 
-        val shop = onlineShops.find { it.id == bid.shopId }
-            ?: MechanicShop(
-                id = bid.shopId,
-                name = bid.shopName,
-                rating = bid.shopRating,
-                reviewCount = 0,
-                isOnline = true,
-                services = emptyList(),
-                distanceKm = bid.distanceKm,
-            )
+        val shop = resolveShop(bid)
 
         _acceptedJob.value = ActiveJob(
             request = request.copy(status = RequestStatus.ACCEPTED),
@@ -335,9 +291,10 @@ class RescueRepository(
         if (request.status == RequestStatus.ACCEPTED) {
             val acceptedMap = doc.get("acceptedBid") as? Map<String, Any>
             val bid = FirestoreMappers.acceptedBidFromMap(acceptedMap) ?: return
-            val shop = onlineShops.find { it.id == bid.shopId }
-                ?: MechanicShop(bid.shopId, bid.shopName, bid.shopRating, 0, true, emptyList(), bid.distanceKm)
-            _acceptedJob.value = ActiveJob(request, bid, shop)
+            scope.launch {
+                val shop = resolveShop(bid)
+                _acceptedJob.value = ActiveJob(request, bid, shop)
+            }
         }
     }
 
@@ -353,9 +310,7 @@ class RescueRepository(
 
     private fun stopBiddingJobs() {
         biddingTimerJob?.cancel()
-        bidSimulationJob?.cancel()
         biddingTimerJob = null
-        bidSimulationJob = null
     }
 
     private fun clearListeners() {

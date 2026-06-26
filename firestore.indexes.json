@@ -9,10 +9,35 @@
       ]
     },
     {
-      "collectionGroup": "bids",
+      "collectionGroup": "breakdown_requests",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "price", "order": "ASCENDING" }
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "breakdown_requests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "acceptedShopId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "shopOwnerId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "service_bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "shopOwnerId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     }
   ],

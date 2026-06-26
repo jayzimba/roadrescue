@@ -51,6 +51,9 @@ fun PhotoPickerSection(
     onPhotosChanged: (List<Uri>) -> Unit,
     maxPhotos: Int = 4,
     modifier: Modifier = Modifier,
+    title: String = "Photos",
+    hint: String? = null,
+    emptyHint: String = "Photos help mechanics bid accurately",
 ) {
     val context = LocalContext.current
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
@@ -100,9 +103,9 @@ fun PhotoPickerSection(
     }
 
     Column(modifier = modifier) {
-        Text("Photos", fontWeight = FontWeight.Medium)
+        Text(title, fontWeight = FontWeight.Medium)
         Text(
-            "Add photos of your vehicle or damage (${photoUris.size}/$maxPhotos)",
+            hint ?: "Add photos (${photoUris.size}/$maxPhotos)",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
         )
@@ -186,7 +189,7 @@ fun PhotoPickerSection(
                         tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
                     )
                     Text(
-                        "Photos help mechanics bid accurately",
+                        emptyHint,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                     )

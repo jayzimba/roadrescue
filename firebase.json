@@ -1,0 +1,10 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules",
+    "bucket": "remoterescue-1eb43.firebasestorage.app"
+  }
+}
