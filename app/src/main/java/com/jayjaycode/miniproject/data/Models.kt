@@ -148,6 +148,7 @@ data class SparePart(
     val compatibleVehicles: List<VehicleCompatibility>,
     val inStock: Boolean,
     val quantity: Int? = null,
+    val committedQuantity: Int = 0,
     val shopId: String = "",
     val ownerId: String = "",
     val imageUrls: List<String> = emptyList(),

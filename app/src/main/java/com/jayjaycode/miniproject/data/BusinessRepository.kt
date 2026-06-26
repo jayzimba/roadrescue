@@ -381,15 +381,6 @@ class BusinessRepository(
         awaitClose { listener.remove() }
     }
 
-    suspend fun getCommittedQuantitiesForShop(shopId: String): Map<String, Int> {
-        val snapshot = firestore.collection(FirestoreConstants.ORDERS)
-            .whereEqualTo("shopId", shopId)
-            .get()
-            .await()
-        val orders = snapshot.documents.mapNotNull { FirestoreMappers.partOrderFromDocument(it) }
-        return SparePartStock.committedFromOrders(orders)
-    }
-
     suspend fun getPartListing(partId: String): SparePart? {
         val doc = firestore.collection(FirestoreConstants.PART_LISTINGS).document(partId).get().await()
         return FirestoreMappers.partListingFromDocument(doc)
@@ -412,14 +403,14 @@ class BusinessRepository(
             error("Checkout one shop at a time")
         }
 
-        val committed = getCommittedQuantitiesForShop(shopId).toMutableMap()
+        val committed = mutableMapOf<String, Int>()
         val orderLines = mutableListOf<PartOrderLineItem>()
         var totalPrice = 0.0
 
         items.forEach { line ->
             val freshPart = getPartListing(line.part.id) ?: error("${line.part.name} is no longer available")
             if (!freshPart.inStock) error("${freshPart.name} is out of stock")
-            val committedQty = committed[line.part.id] ?: 0
+            val committedQty = committed[freshPart.id] ?: freshPart.committedQuantity
             if (!SparePartStock.canFulfill(freshPart.quantity, committedQty, line.quantity)) {
                 val available = SparePartStock.availableQuantity(freshPart.quantity, committedQty) ?: 0
                 error(

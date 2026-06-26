@@ -153,6 +153,34 @@ async function notifyUser(userId, payload) {
   if (stale?.length) await removeStaleTokens(userId, stale);
 }
 
+/**
+ * @param {string} partId
+ * @param {number} delta
+ */
+async function adjustPartCommitted(partId, delta) {
+  if (!partId || !delta) return;
+  const ref = db.collection("part_listings").doc(partId);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const current = Number(snap.get("committedQuantity")) || 0;
+    tx.update(ref, {committedQuantity: Math.max(0, current + delta)});
+  });
+}
+
+/**
+ * @param {object} order
+ * @param {number} multiplier
+ */
+async function adjustOrderCommitted(order, multiplier) {
+  const items = Array.isArray(order.items) ? order.items : [];
+  for (const item of items) {
+    const partId = item.id;
+    const qty = Number(item.quantity) || 1;
+    if (partId) await adjustPartCommitted(partId, qty * multiplier);
+  }
+}
+
 /** Customer notified when a shop places a bid. */
 exports.onBidCreated = onDocumentCreated(
     "breakdown_requests/{requestId}/bids/{bidId}",
@@ -266,6 +294,7 @@ exports.onPartOrderCreated = onDocumentCreated(
 
       const orderId = event.params.orderId;
       const ownerId = order.shopOwnerId;
+      await adjustOrderCommitted(order, 1);
       const summary = summarizePartOrder(order);
       await notifyUser(ownerId, {
         title: "New part order",
@@ -284,6 +313,15 @@ exports.onPartOrderUpdated = onDocumentUpdated(
       const before = event.data?.before.data();
       const after = event.data?.after.data();
       if (!before || !after) return;
+
+      if (before.status !== after.status) {
+        if (after.status === "CANCELLED" && before.status !== "CANCELLED") {
+          await adjustOrderCommitted(after, -1);
+        } else if (before.status === "CANCELLED" && after.status !== "CANCELLED") {
+          await adjustOrderCommitted(after, 1);
+        }
+      }
+
       if (before.status === after.status) return;
 
       const copy = statusUpdateCopy(after.status, false);

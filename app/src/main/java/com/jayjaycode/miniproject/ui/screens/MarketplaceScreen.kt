@@ -140,9 +140,9 @@ fun MarketplaceScreen(
         Spacer(Modifier.height(8.dp))
 
         LazyColumn(
+            modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.fillMaxSize(),
         ) {
             if (filtered.isEmpty()) {
                 item {
@@ -164,7 +164,10 @@ fun MarketplaceScreen(
                     )
                 }
             } else {
-                items(filtered, key = { it.id }) { part ->
+                items(
+                    items = filtered,
+                    key = { part -> part.id.ifBlank { "${part.shopId}_${part.name}" } },
+                ) { part ->
                     PartCard(
                         part = part,
                         availabilityLabel = viewModel.availabilityLabel(part),
@@ -218,10 +221,12 @@ private fun PartCard(
     onClick: () -> Unit,
     onAdd: () -> Unit,
     onRemove: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Card(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
+        modifier = modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier

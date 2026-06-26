@@ -21,13 +21,6 @@ class MarketplaceViewModel(
     private val repository: BusinessRepository = BusinessRepository.instance,
 ) : ViewModel() {
 
-    init {
-        repository.startObservingProfile()
-        viewModelScope.launch {
-            parts.collect { refreshCommittedQuantities(it) }
-        }
-    }
-
     val parts: StateFlow<List<SparePart>> = repository.observeMarketplaceParts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -37,9 +30,6 @@ class MarketplaceViewModel(
 
     private val _cart = MutableStateFlow<List<CartLineItem>>(emptyList())
     val cart: StateFlow<List<CartLineItem>> = _cart.asStateFlow()
-
-    private val _committedQuantities = MutableStateFlow<Map<String, Int>>(emptyMap())
-    val committedQuantities: StateFlow<Map<String, Int>> = _committedQuantities.asStateFlow()
 
     private val _isCheckingOut = MutableStateFlow(false)
     val isCheckingOut: StateFlow<Boolean> = _isCheckingOut.asStateFlow()
@@ -58,6 +48,13 @@ class MarketplaceViewModel(
         .map { lines -> lines.sumOf { it.lineTotal } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
+    init {
+        repository.startObservingProfile()
+        viewModelScope.launch {
+            parts.collect { clampCartToAvailability() }
+        }
+    }
+
     fun clearCheckoutError() {
         _checkoutError.value = null
     }
@@ -66,14 +63,14 @@ class MarketplaceViewModel(
         _lastPlacedOrder.value = null
     }
 
-    fun committedFor(partId: String): Int = _committedQuantities.value[partId] ?: 0
+    fun committedFor(partId: String): Int =
+        parts.value.find { it.id == partId }?.committedQuantity ?: 0
 
     fun availableQuantity(part: SparePart): Int? =
         SparePartStock.availableQuantity(part.quantity, committedFor(part.id))
 
     fun maxSelectableQuantity(part: SparePart): Int? {
-        val listedMax = SparePartStock.maxSelectable(part.quantity, committedFor(part.id))
-        return listedMax
+        return SparePartStock.maxSelectable(part.quantity, committedFor(part.id))
     }
 
     fun isPurchasable(part: SparePart): Boolean =
@@ -202,7 +199,6 @@ class MarketplaceViewModel(
                 )
                 _lastPlacedOrder.value = order
                 clearCart()
-                refreshCommittedQuantities(parts.value)
                 onSuccess()
             } catch (e: Exception) {
                 _checkoutError.value = e.localizedMessage ?: "Checkout failed"
@@ -210,20 +206,6 @@ class MarketplaceViewModel(
                 _isCheckingOut.value = false
             }
         }
-    }
-
-    private suspend fun refreshCommittedQuantities(currentParts: List<SparePart>) {
-        val shopIds = currentParts.map { it.shopId }.filter { it.isNotBlank() }.distinct()
-        if (shopIds.isEmpty()) {
-            _committedQuantities.value = emptyMap()
-            return
-        }
-        val merged = mutableMapOf<String, Int>()
-        shopIds.forEach { shopId ->
-            merged.putAll(repository.getCommittedQuantitiesForShop(shopId))
-        }
-        _committedQuantities.value = merged
-        clampCartToAvailability()
     }
 
     private fun clampCartToAvailability() {
