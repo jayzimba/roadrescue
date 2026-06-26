@@ -17,27 +17,31 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.jayjaycode.miniproject.data.SparePart
+import com.jayjaycode.miniproject.data.CartLineItem
 import com.jayjaycode.miniproject.util.CurrencyFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CartBottomSheet(
-    cart: List<SparePart>,
+    cart: List<CartLineItem>,
     onDismiss: () -> Unit,
-    onRemove: (SparePart) -> Unit,
+    onRemove: (String) -> Unit,
+    onQuantityChange: (String, Int) -> Unit,
+    maxQuantityFor: (String) -> Int?,
     onCheckout: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val total = cart.sumOf { it.price }
+    val total = cart.sumOf { it.lineTotal }
+    val itemCount = cart.sumOf { it.quantity }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
             Text("Your cart", fontWeight = FontWeight.Bold)
-            Text("${cart.size} item${if (cart.size != 1) "s" else ""}")
+            Text("$itemCount item${if (itemCount != 1) "s" else ""}")
             Spacer(Modifier.height(16.dp))
 
             if (cart.isEmpty()) {
@@ -45,18 +49,26 @@ fun CartBottomSheet(
                 Spacer(Modifier.height(24.dp))
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(cart, key = { it.id }) { part ->
+                    items(cart, key = { it.part.id }) { line ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(part.name, fontWeight = FontWeight.Medium)
-                                Text(CurrencyFormatter.format(part.price))
+                                Text(line.part.name, fontWeight = FontWeight.Medium)
+                                Text(
+                                    "${CurrencyFormatter.format(line.part.price)} each · ${CurrencyFormatter.format(line.lineTotal)}",
+                                )
                             }
-                            TextButton(onClick = { onRemove(part) }) {
-                                Text("Remove")
-                            }
+                            QuantityStepper(
+                                quantity = line.quantity,
+                                onQuantityChange = { onQuantityChange(line.part.id, it) },
+                                max = maxQuantityFor(line.part.id),
+                            )
+                        }
+                        TextButton(onClick = { onRemove(line.part.id) }) {
+                            Text("Remove")
                         }
                         HorizontalDivider()
                     }

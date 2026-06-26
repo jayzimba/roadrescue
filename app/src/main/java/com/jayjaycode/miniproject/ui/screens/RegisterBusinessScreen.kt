@@ -74,7 +74,7 @@ fun RegisterBusinessScreen(
         !isLoading
 
     Scaffold(
-        topBar = { AppTopBar(onBack = onBack) },
+        topBar = { AppTopBar(title = "Register business", onBack = onBack) },
     ) { padding ->
         Column(
             modifier = Modifier

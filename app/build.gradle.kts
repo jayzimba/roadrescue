@@ -61,6 +61,7 @@ dependencies {
     implementation(libs.play.services.location)
     implementation(libs.play.services.maps)
     implementation(libs.maps.compose)
+    implementation(libs.places)
     implementation(libs.coil.compose)
 
     implementation(platform(libs.firebase.bom))

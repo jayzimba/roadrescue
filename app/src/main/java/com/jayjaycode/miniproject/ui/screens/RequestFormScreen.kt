@@ -31,6 +31,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -73,13 +74,14 @@ fun RequestFormScreen(
 
     val isSubmitting by viewModel.isSubmitting.collectAsState()
     val submitError by viewModel.submitError.collectAsState()
+    val context = LocalContext.current
     val title = if (requestType == RequestType.TOWING) "Request Towing" else "Request Mechanic"
     val canSubmit = make.isNotBlank() && model.isNotBlank() && year.isNotBlank() &&
         problem.isNotBlank() && location.isNotBlank() &&
         latitude != null && longitude != null && !isSubmitting
 
     Scaffold(
-        topBar = { AppTopBar(onBack = onBack) },
+        topBar = { AppTopBar(title = title, onBack = onBack) },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -201,6 +203,7 @@ fun RequestFormScreen(
                         latitude = latitude!!,
                         longitude = longitude!!,
                         photoUris = photoUriObjects,
+                        context = context,
                         onSuccess = onSubmitted,
                     )
                 },

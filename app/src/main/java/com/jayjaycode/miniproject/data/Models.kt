@@ -85,6 +85,7 @@ data class BreakdownRequest(
     val createdAtMillis: Long = System.currentTimeMillis(),
     val userId: String = "",
     val biddingEndsAtMillis: Long = 0L,
+    val autoAcceptLowestBid: Boolean = false,
 )
 
 data class MechanicBid(
@@ -118,10 +119,46 @@ data class SparePart(
     val condition: String,
     val compatibleVehicles: List<VehicleCompatibility>,
     val inStock: Boolean,
+    val quantity: Int? = null,
     val shopId: String = "",
     val ownerId: String = "",
     val imageUrls: List<String> = emptyList(),
     val paymentMethods: List<PaymentMethod> = emptyList(),
+)
+
+data class CartLineItem(
+    val part: SparePart,
+    val quantity: Int,
+) {
+    val lineTotal: Double get() = part.price * quantity
+}
+
+data class PartOrderLineItem(
+    val partId: String,
+    val name: String,
+    val category: String,
+    val unitPrice: Double,
+    val quantity: Int,
+) {
+    val lineTotal: Double get() = unitPrice * quantity
+}
+
+data class PartOrder(
+    val id: String,
+    val buyerId: String,
+    val buyerEmail: String,
+    val shopId: String,
+    val shopName: String,
+    val shopOwnerId: String,
+    val items: List<PartOrderLineItem>,
+    val totalPrice: Double,
+    val paymentMethod: PaymentMethod? = null,
+    val deliveryPhone: String = "",
+    val deliveryAddress: String = "",
+    val deliveryLatitude: Double? = null,
+    val deliveryLongitude: Double? = null,
+    val status: OrderStatus = OrderStatus.PENDING,
+    val createdAtMillis: Long = System.currentTimeMillis(),
 )
 
 data class ServicePackage(
@@ -134,22 +171,6 @@ data class ServicePackage(
     val shopId: String = "",
     val shopName: String = "",
     val ownerId: String = "",
-)
-
-data class PartOrder(
-    val id: String,
-    val buyerId: String,
-    val buyerEmail: String,
-    val shopId: String,
-    val shopName: String,
-    val shopOwnerId: String,
-    val items: List<SparePart>,
-    val totalPrice: Double,
-    val paymentMethod: PaymentMethod? = null,
-    val deliveryPhone: String = "",
-    val deliveryAddress: String = "",
-    val status: OrderStatus = OrderStatus.PENDING,
-    val createdAtMillis: Long = System.currentTimeMillis(),
 )
 
 data class ServiceBookingOrder(

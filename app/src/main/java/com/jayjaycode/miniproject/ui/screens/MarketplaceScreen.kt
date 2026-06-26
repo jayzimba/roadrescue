@@ -16,7 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
@@ -50,28 +49,28 @@ import com.jayjaycode.miniproject.ui.components.MarketplaceFilterSheet
 import com.jayjaycode.miniproject.ui.components.PaymentMethodChips
 import com.jayjaycode.miniproject.ui.components.PriceTag
 import com.jayjaycode.miniproject.ui.components.SectionTitle
+import com.jayjaycode.miniproject.ui.screens.auth.AuthErrorBanner
 import com.jayjaycode.miniproject.ui.theme.GreenAccent
 import com.jayjaycode.miniproject.ui.theme.TextSecondary
 import com.jayjaycode.miniproject.ui.theme.formOutlinedTextFieldColors
 import com.jayjaycode.miniproject.ui.viewmodel.MarketplaceViewModel
-import com.jayjaycode.miniproject.util.CurrencyFormatter
 import coil.compose.AsyncImage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MarketplaceScreen(
     onPartClick: (String) -> Unit,
+    onCheckout: () -> Unit,
     viewModel: MarketplaceViewModel = viewModel(),
 ) {
     val cart by viewModel.cart.collectAsState()
+    val cartItemCount by viewModel.cartItemCount.collectAsState()
     val parts by viewModel.parts.collectAsState()
     val checkoutError by viewModel.checkoutError.collectAsState()
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var appliedFilters by remember { mutableStateOf(MarketplacePartFilters()) }
     var showFilterSheet by remember { mutableStateOf(false) }
     var showCart by remember { mutableStateOf(false) }
-    var showCheckoutConfirm by remember { mutableStateOf(false) }
-    var orderSummary by remember { mutableStateOf(0 to 0.0) }
 
     val filtered = parts.filter { part ->
         MarketplacePartFilterMatcher.matches(part, searchQuery, appliedFilters)
@@ -80,6 +79,13 @@ fun MarketplaceScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         SectionTitle("Marketplace", "Buy parts from registered auto shops")
+
+        checkoutError?.let { error ->
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                AuthErrorBanner(error)
+            }
+            Spacer(Modifier.height(8.dp))
+        }
 
         Row(
             modifier = Modifier
@@ -112,7 +118,7 @@ fun MarketplaceScreen(
             }
             BadgedBox(
                 badge = {
-                    if (cart.isNotEmpty()) Badge { Text("${cart.size}") }
+                    if (cartItemCount > 0) Badge { Text("$cartItemCount") }
                 },
             ) {
                 IconButton(onClick = { showCart = true }) {
@@ -161,7 +167,9 @@ fun MarketplaceScreen(
                 items(filtered, key = { it.id }) { part ->
                     PartCard(
                         part = part,
-                        inCart = cart.any { it.id == part.id },
+                        availabilityLabel = viewModel.availabilityLabel(part),
+                        purchasable = viewModel.isPurchasable(part),
+                        cartQuantity = viewModel.cartQuantityFor(part.id),
                         onClick = { onPartClick(part.id) },
                         onAdd = { viewModel.addToCart(part) },
                         onRemove = { viewModel.removeFromCart(part) },
@@ -187,47 +195,14 @@ fun MarketplaceScreen(
             cart = cart,
             onDismiss = { showCart = false },
             onRemove = { viewModel.removeFromCart(it) },
+            onQuantityChange = { partId, qty -> viewModel.updateCartQuantity(partId, qty) },
+            maxQuantityFor = { partId ->
+                parts.find { it.id == partId }?.let { viewModel.maxSelectableQuantity(it) }
+            },
             onCheckout = {
-                val itemCount = cart.size
-                val total = cart.sumOf { it.price }
                 showCart = false
-                viewModel.checkout(
-                    onSuccess = {
-                        orderSummary = itemCount to total
-                        showCheckoutConfirm = true
-                    },
-                )
-            },
-        )
-    }
-
-    if (showCheckoutConfirm) {
-        AlertDialog(
-            onDismissRequest = { showCheckoutConfirm = false },
-            title = { Text("Order placed") },
-            text = {
-                Text(
-                    "Your order of ${orderSummary.first} item(s) totaling ${CurrencyFormatter.format(orderSummary.second)} has been sent to the seller. They will confirm shortly.",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { showCheckoutConfirm = false }) {
-                    Text("OK")
-                }
-            },
-        )
-    }
-
-    checkoutError?.let { error ->
-        AlertDialog(
-            onDismissRequest = { viewModel.clearCheckoutError() },
-            title = { Text("Checkout failed") },
-            text = { Text(error) },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.clearCheckoutError()
-                    showCart = true
-                }) { Text("Back to cart") }
+                viewModel.clearCheckoutError()
+                onCheckout()
             },
         )
     }
@@ -237,7 +212,9 @@ fun MarketplaceScreen(
 @Composable
 private fun PartCard(
     part: SparePart,
-    inCart: Boolean,
+    availabilityLabel: String,
+    purchasable: Boolean,
+    cartQuantity: Int,
     onClick: () -> Unit,
     onAdd: () -> Unit,
     onRemove: () -> Unit,
@@ -274,9 +251,9 @@ private fun PartCard(
                     color = TextSecondary,
                 )
                 Text(
-                    if (part.inStock) "In stock" else "Out of stock",
+                    availabilityLabel,
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (part.inStock) GreenAccent else TextSecondary,
+                    color = if (purchasable) GreenAccent else TextSecondary,
                 )
                 if (part.compatibleVehicles.isNotEmpty()) {
                     Text(
@@ -293,11 +270,16 @@ private fun PartCard(
                 PriceTag(part.price)
                 Spacer(Modifier.height(8.dp))
                 TextButton(
-                    onClick = if (inCart) onRemove else onAdd,
-                    enabled = part.inStock,
+                    onClick = if (cartQuantity > 0) onRemove else onAdd,
+                    enabled = purchasable || cartQuantity > 0,
                     modifier = Modifier,
                 ) {
-                    Text(if (inCart) "Remove" else "Add")
+                    Text(
+                        when {
+                            cartQuantity > 0 -> "In cart ($cartQuantity)"
+                            else -> "Add"
+                        },
+                    )
                 }
             }
         }

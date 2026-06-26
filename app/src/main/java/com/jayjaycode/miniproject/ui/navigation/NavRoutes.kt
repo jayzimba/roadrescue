@@ -14,8 +14,17 @@ object NavRoutes {
     const val ADD_PART_LISTING = "add_part_listing"
     const val ADD_SERVICE_LISTING = "add_service_listing"
     const val PART_LISTING_DETAIL = "part_listing/{partId}"
+    const val CHECKOUT = "checkout"
+    const val ORDER_CONFIRMATION = "order_confirmation"
+    const val MY_ORDERS = "my_orders"
+    const val PART_ORDER_DETAIL = "part_order/{orderId}"
+    const val SERVICE_BOOKING_DETAIL = "service_booking_order/{bookingId}"
 
     fun requestForm(type: String) = "request_form/$type"
 
     fun partListing(partId: String) = "part_listing/$partId"
+
+    fun partOrderDetail(orderId: String) = "part_order/$orderId"
+
+    fun serviceBookingDetail(bookingId: String) = "service_booking_order/$bookingId"
 }

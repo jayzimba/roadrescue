@@ -1,9 +1,7 @@
 package com.jayjaycode.miniproject.ui.screens
 
-import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,8 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -37,14 +33,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 import com.jayjaycode.miniproject.data.RequestType
 import com.google.android.gms.maps.model.LatLng
+import com.jayjaycode.miniproject.ui.components.BreakdownPhotoStrip
 import com.jayjaycode.miniproject.ui.components.JobTrackingMap
 import com.jayjaycode.miniproject.ui.components.PriceTag
 import com.jayjaycode.miniproject.ui.components.RescueMap
@@ -71,7 +65,7 @@ fun ActiveJobScreen(
     val activeJob = job ?: return
     val isTowing = activeJob.request.type == RequestType.TOWING
     val displayEta = if (remainingEta > 0) remainingEta else activeJob.acceptedBid.etaMinutes
-    val photoUris = activeJob.request.photoUris.mapNotNull { runCatching { Uri.parse(it) }.getOrNull() }
+    val photoUrls = activeJob.request.photoUris.filter { it.isNotBlank() }
     val pickup = LatLng(activeJob.request.latitude, activeJob.request.longitude)
     val approachFactor = 1f - trackingProgress
     val providerPosition = LatLng(
@@ -168,25 +162,14 @@ fun ActiveJobScreen(
                 }
             }
 
-            if (photoUris.isNotEmpty()) {
+            if (photoUrls.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
                 Text("Your photos", fontWeight = FontWeight.Medium)
                 Spacer(Modifier.height(8.dp))
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(vertical = 4.dp),
-                ) {
-                    items(photoUris, key = { it.toString() }) { uri ->
-                        AsyncImage(
-                            model = uri,
-                            contentDescription = "Breakdown photo",
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(RoundedCornerShape(8.dp)),
-                            contentScale = ContentScale.Crop,
-                        )
-                    }
-                }
+                BreakdownPhotoStrip(
+                    photoUrls = photoUrls,
+                    height = 72.dp,
+                )
             }
 
             Spacer(Modifier.height(12.dp))

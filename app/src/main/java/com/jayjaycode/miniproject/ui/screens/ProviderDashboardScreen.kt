@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,6 +36,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import com.jayjaycode.miniproject.ui.components.AppTopBar
+import com.jayjaycode.miniproject.ui.components.BreakdownPhotoStrip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -89,7 +92,7 @@ fun ProviderDashboardScreen(
     val tabs = listOf("Open jobs", "My jobs", "Listings", "Orders")
 
     Scaffold(
-        topBar = { AppTopBar(onBack = onBack) },
+        topBar = { AppTopBar(title = "Provider dashboard", onBack = onBack) },
         floatingActionButton = {
             if (selectedTab == 2 && business != null) {
                 Box {
@@ -240,6 +243,9 @@ private fun JobCard(job: BreakdownRequest, actionLabel: String?, onAction: () ->
                 style = MaterialTheme.typography.bodySmall,
             )
             Text(job.problemDescription, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            if (job.photoUris.isNotEmpty()) {
+                BreakdownPhotoStrip(photoUrls = job.photoUris)
+            }
             actionLabel?.let {
                 Button(onClick = onAction, modifier = Modifier.fillMaxWidth()) {
                     Text(it)
@@ -277,6 +283,14 @@ private fun ListingsTab(
                                     color = TextSecondary,
                                 )
                             }
+                            Text(
+                                when (val qty = part.quantity) {
+                                    null -> "Stock: Unlimited"
+                                    else -> "Listed qty: $qty"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary,
+                            )
                             PriceTag(part.price)
                         }
                         TextButton(onClick = { onToggleStock(part.id, !part.inStock) }) {
@@ -319,7 +333,7 @@ private fun OrdersTab(
         } else {
             items(orders, key = { it.id }) { order ->
                 OrderCard(
-                    title = "${order.items.size} item(s) · ${CurrencyFormatter.format(order.totalPrice)}",
+                    title = "${order.items.sumOf { it.quantity }} item(s) · ${CurrencyFormatter.format(order.totalPrice)}",
                     subtitle = order.buyerEmail,
                     status = order.status.name,
                     onConfirm = if (order.status == OrderStatus.PENDING) {{ onConfirmOrder(order.id) }} else null,
@@ -353,10 +367,21 @@ private fun OrderCard(
     onComplete: (() -> Unit)?,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(title, fontWeight = FontWeight.Medium)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-            Text(status, color = GreenAccent, style = MaterialTheme.typography.labelSmall)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(title, fontWeight = FontWeight.Medium)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                Text(status, color = GreenAccent, style = MaterialTheme.typography.labelSmall)
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 onConfirm?.let { Button(onClick = it) { Text("Confirm") } }
                 onComplete?.let { Button(onClick = it) { Text("Complete") } }
@@ -395,8 +420,19 @@ private fun PlaceBidDialog(
         onDismissRequest = onDismiss,
         title = { Text("Bid on ${request.type.name.lowercase()} request") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Text(request.locationLabel, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "${request.vehicle.make} ${request.vehicle.model} (${request.vehicle.year})",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                )
+                if (request.photoUris.isNotEmpty()) {
+                    BreakdownPhotoStrip(photoUrls = request.photoUris, height = 72.dp)
+                }
                 OutlinedTextField(
                     priceText,
                     { priceText = it },

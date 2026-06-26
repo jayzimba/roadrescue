@@ -11,6 +11,7 @@ import com.jayjaycode.miniproject.data.MechanicBid
 import com.jayjaycode.miniproject.data.MechanicShop
 import com.jayjaycode.miniproject.data.OrderStatus
 import com.jayjaycode.miniproject.data.PartOrder
+import com.jayjaycode.miniproject.data.PartOrderLineItem
 import com.jayjaycode.miniproject.data.PaymentMethod
 import com.jayjaycode.miniproject.data.RequestStatus
 import com.jayjaycode.miniproject.data.RequestType
@@ -60,6 +61,7 @@ object FirestoreMappers {
         "status" to request.status.name,
         "createdAt" to Timestamp(Date(request.createdAtMillis)),
         "biddingEndsAt" to Timestamp(Date(biddingEndsAtMillis)),
+        "autoAcceptLowestBid" to request.autoAcceptLowestBid,
     )
 
     fun requestFromDocument(doc: DocumentSnapshot): BreakdownRequest? {
@@ -89,6 +91,7 @@ object FirestoreMappers {
             createdAtMillis = doc.getTimestamp("createdAt")?.toDate()?.time ?: System.currentTimeMillis(),
             userId = doc.getString("userId").orEmpty(),
             biddingEndsAtMillis = doc.getTimestamp("biddingEndsAt")?.toDate()?.time ?: 0L,
+            autoAcceptLowestBid = doc.getBoolean("autoAcceptLowestBid") ?: false,
         )
     }
 
@@ -217,6 +220,7 @@ object FirestoreMappers {
             condition = doc.getString("condition").orEmpty(),
             compatibleVehicles = compatibleVehiclesFromDocument(doc),
             inStock = doc.getBoolean("inStock") ?: true,
+            quantity = doc.getLong("quantity")?.toInt(),
             shopId = doc.getString("shopId").orEmpty(),
             ownerId = doc.getString("ownerId").orEmpty(),
             imageUrls = (doc.get("imageUrls") as? List<*>)?.filterIsInstance<String>().orEmpty(),
@@ -237,6 +241,7 @@ object FirestoreMappers {
         "compatibleVehicles" to part.compatibleVehicles.map { mapOf("make" to it.make, "model" to it.model) },
         "compatibleMakes" to part.compatibleVehicles.map { it.displayLabel() },
         "inStock" to part.inStock,
+        "quantity" to part.quantity,
         "imageUrls" to part.imageUrls,
         "paymentMethods" to part.paymentMethods.map { it.name },
         "createdAt" to FieldValue.serverTimestamp(),
@@ -276,15 +281,18 @@ object FirestoreMappers {
         "shopName" to order.shopName,
         "shopOwnerId" to order.shopOwnerId,
         "items" to order.items.map { mapOf(
-            "id" to it.id,
+            "id" to it.partId,
             "name" to it.name,
-            "price" to it.price,
+            "price" to it.unitPrice,
             "category" to it.category,
+            "quantity" to it.quantity,
         ) },
         "totalPrice" to order.totalPrice,
         "paymentMethod" to order.paymentMethod?.name,
         "deliveryPhone" to order.deliveryPhone,
         "deliveryAddress" to order.deliveryAddress,
+        "deliveryLatitude" to order.deliveryLatitude,
+        "deliveryLongitude" to order.deliveryLongitude,
         "status" to order.status.name,
         "createdAt" to Timestamp(Date(order.createdAtMillis)),
     )
@@ -297,16 +305,12 @@ object FirestoreMappers {
         val itemsRaw = doc.get("items") as? List<*> ?: emptyList<Any>()
         val items = itemsRaw.mapNotNull { raw ->
             val map = raw as? Map<*, *> ?: return@mapNotNull null
-            SparePart(
-                id = map["id"] as? String ?: "",
+            PartOrderLineItem(
+                partId = map["id"] as? String ?: "",
                 name = map["name"] as? String ?: "",
                 category = map["category"] as? String ?: "",
-                price = (map["price"] as? Number)?.toDouble() ?: 0.0,
-                seller = doc.getString("shopName").orEmpty(),
-                condition = "",
-                compatibleVehicles = emptyList(),
-                inStock = true,
-                shopId = doc.getString("shopId").orEmpty(),
+                unitPrice = (map["price"] as? Number)?.toDouble() ?: 0.0,
+                quantity = (map["quantity"] as? Number)?.toInt()?.coerceAtLeast(1) ?: 1,
             )
         }
         return PartOrder(
@@ -323,6 +327,8 @@ object FirestoreMappers {
             },
             deliveryPhone = doc.getString("deliveryPhone").orEmpty(),
             deliveryAddress = doc.getString("deliveryAddress").orEmpty(),
+            deliveryLatitude = doc.getDouble("deliveryLatitude"),
+            deliveryLongitude = doc.getDouble("deliveryLongitude"),
             status = status,
             createdAtMillis = doc.getTimestamp("createdAt")?.toDate()?.time ?: 0L,
         )

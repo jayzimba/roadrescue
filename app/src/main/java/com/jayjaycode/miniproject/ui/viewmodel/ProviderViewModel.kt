@@ -148,6 +148,7 @@ class ProviderViewModel(
         photoUris: List<Uri>,
         paymentMethods: Set<PaymentMethod>,
         context: Context,
+        quantity: Int? = null,
         onSuccess: () -> Unit,
     ) {
         viewModelScope.launch {
@@ -163,6 +164,7 @@ class ProviderViewModel(
                     photoUris = photoUris,
                     paymentMethods = paymentMethods.toList(),
                     context = context,
+                    quantity = quantity,
                 )
                 _successMessage.value = "Part listed"
                 onSuccess()

@@ -59,6 +59,7 @@ fun RequestHistoryScreen(
     Scaffold(
         topBar = {
             AppTopBar(
+                title = "Request history",
                 onBack = onBack,
                 actions = {
                     IconButton(onClick = { viewModel.refresh() }) {

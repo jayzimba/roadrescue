@@ -1,5 +1,8 @@
 package com.jayjaycode.miniproject.data
 
+import android.content.Context
+import android.net.Uri
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -7,6 +10,7 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.jayjaycode.miniproject.data.firebase.FirestoreConstants
 import com.jayjaycode.miniproject.data.firebase.FirestoreMappers
+import com.jayjaycode.miniproject.util.FirebaseStorageHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,6 +41,8 @@ class RescueRepository(
 
     private val _activeRequest = MutableStateFlow<BreakdownRequest?>(null)
     val activeRequest: Flow<BreakdownRequest?> = _activeRequest.asStateFlow()
+
+    private var currentBiddingEndsAtMillis: Long = 0L
 
     private val _bids = MutableStateFlow<List<MechanicBid>>(emptyList())
     val bids: Flow<List<MechanicBid>> = _bids.asStateFlow()
@@ -83,14 +89,33 @@ class RescueRepository(
         locationLabel: String,
         latitude: Double,
         longitude: Double,
-        photoUris: List<String> = emptyList(),
+        photoUris: List<Uri> = emptyList(),
+        context: Context,
     ): BreakdownRequest {
         val user = auth.currentUser ?: error("You must be signed in")
         val now = System.currentTimeMillis()
         val biddingEndsAt = now + FirestoreConstants.BIDDING_DURATION_SECONDS * 1000L
 
+        val docRef = firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS).document()
+        val uploadedPhotoUrls = photoUris.mapIndexed { index, uri ->
+            if (uri.scheme?.startsWith("http") == true) {
+                uri.toString()
+            } else {
+                FirebaseStorageHelper.uploadImage(
+                    pathSegments = listOf(
+                        FirestoreConstants.BREAKDOWN_REQUEST_PHOTOS,
+                        user.uid,
+                        docRef.id,
+                        "photo_$index.jpg",
+                    ),
+                    sourceUri = uri,
+                    context = context,
+                )
+            }
+        }
+
         val request = BreakdownRequest(
-            id = "",
+            id = docRef.id,
             type = type,
             vehicle = vehicle,
             problemDescription = problemDescription,
@@ -98,32 +123,31 @@ class RescueRepository(
             locationLabel = locationLabel,
             latitude = latitude,
             longitude = longitude,
-            photoUris = photoUris,
+            photoUris = uploadedPhotoUrls,
             status = RequestStatus.BIDDING,
             createdAtMillis = now,
             userId = user.uid,
             biddingEndsAtMillis = biddingEndsAt,
         )
 
-        val docRef = firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS).document()
-        val requestWithId = request.copy(id = docRef.id)
         docRef.set(
-            FirestoreMappers.requestToMap(requestWithId, user.uid, user.email.orEmpty(), biddingEndsAt),
+            FirestoreMappers.requestToMap(request, user.uid, user.email.orEmpty(), biddingEndsAt),
         ).await()
 
         clearListeners()
         _activeRequestId.value = docRef.id
-        _activeRequest.value = requestWithId
+        _activeRequest.value = request
         _bids.value = emptyList()
         _acceptedJob.value = null
         _biddingSecondsLeft.value = FirestoreConstants.BIDDING_DURATION_SECONDS
 
         attachRequestListener(docRef.id)
         attachBidsListener(docRef.id)
+        currentBiddingEndsAtMillis = biddingEndsAt
         startBiddingTimer(biddingEndsAt)
 
         refreshRequestHistory()
-        return requestWithId
+        return request
     }
 
     private fun attachRequestListener(requestId: String) {
@@ -134,6 +158,13 @@ class RescueRepository(
                 if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
                 val request = FirestoreMappers.requestFromDocument(snapshot) ?: return@addSnapshotListener
                 _activeRequest.value = request
+
+                if (request.status == RequestStatus.BIDDING) {
+                    val endsAt = request.biddingEndsAtMillis
+                    if (endsAt > System.currentTimeMillis() && endsAt != currentBiddingEndsAtMillis) {
+                        startBiddingTimer(endsAt)
+                    }
+                }
 
                 if (request.status == RequestStatus.ACCEPTED || request.status == RequestStatus.IN_PROGRESS) {
                     val acceptedMap = snapshot.get("acceptedBid") as? Map<String, Any>
@@ -166,16 +197,56 @@ class RescueRepository(
     }
 
     private fun startBiddingTimer(biddingEndsAtMillis: Long) {
+        currentBiddingEndsAtMillis = biddingEndsAtMillis
         biddingTimerJob?.cancel()
         biddingTimerJob = scope.launch {
             while (true) {
                 val secondsLeft = ((biddingEndsAtMillis - System.currentTimeMillis()) / 1000).toInt()
                 _biddingSecondsLeft.value = secondsLeft.coerceAtLeast(0)
-                if (secondsLeft <= 0) break
+                if (secondsLeft <= 0) {
+                    maybeAutoAcceptLowestBid()
+                    break
+                }
                 delay(1000)
             }
             _biddingSecondsLeft.value = 0
-            // UI shows timer at zero; request stays BIDDING until user accepts or cancels.
+        }
+    }
+
+    private suspend fun maybeAutoAcceptLowestBid() {
+        val request = _activeRequest.value ?: return
+        if (request.status != RequestStatus.BIDDING || !request.autoAcceptLowestBid) return
+        val lowest = _bids.value.firstOrNull() ?: return
+        runCatching { acceptBid(lowest) }
+    }
+
+    suspend fun extendBiddingTime(extraSeconds: Int = FirestoreConstants.BIDDING_EXTENSION_SECONDS) {
+        val requestId = _activeRequestId.value ?: error("No active request")
+        val request = _activeRequest.value ?: error("No active request")
+        if (request.status != RequestStatus.BIDDING) error("Bidding has ended")
+        val newEndsAt = maxOf(
+            currentBiddingEndsAtMillis,
+            System.currentTimeMillis(),
+        ) + extraSeconds * 1000L
+        firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS)
+            .document(requestId)
+            .update("biddingEndsAt", Timestamp(java.util.Date(newEndsAt)))
+            .await()
+        _activeRequest.value = request.copy(biddingEndsAtMillis = newEndsAt)
+        startBiddingTimer(newEndsAt)
+    }
+
+    suspend fun setAutoAcceptLowestBid(enabled: Boolean) {
+        val requestId = _activeRequestId.value ?: error("No active request")
+        val request = _activeRequest.value ?: error("No active request")
+        if (request.status != RequestStatus.BIDDING) error("Bidding has ended")
+        firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS)
+            .document(requestId)
+            .update("autoAcceptLowestBid", enabled)
+            .await()
+        _activeRequest.value = request.copy(autoAcceptLowestBid = enabled)
+        if (enabled && _biddingSecondsLeft.value <= 0) {
+            maybeAutoAcceptLowestBid()
         }
     }
 
@@ -285,7 +356,11 @@ class RescueRepository(
         val endsAt = request.biddingEndsAtMillis
         if (request.status == RequestStatus.BIDDING && endsAt > System.currentTimeMillis()) {
             _biddingSecondsLeft.value = ((endsAt - System.currentTimeMillis()) / 1000).toInt()
+            currentBiddingEndsAtMillis = endsAt
             startBiddingTimer(endsAt)
+        } else if (request.status == RequestStatus.BIDDING) {
+            _biddingSecondsLeft.value = 0
+            scope.launch { maybeAutoAcceptLowestBid() }
         }
 
         if (request.status == RequestStatus.ACCEPTED) {

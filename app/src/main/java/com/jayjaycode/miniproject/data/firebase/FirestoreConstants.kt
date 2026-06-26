@@ -12,8 +12,10 @@ object FirestoreConstants {
 
     const val BUSINESS_CERTIFICATES_STORAGE = "business_certificates"
     const val PART_LISTING_IMAGES = "part_listing_images"
+    const val BREAKDOWN_REQUEST_PHOTOS = "breakdown_request_photos"
     const val SHOP_PRIVATE = "private"
     const val SHOP_CERTIFICATE_DOC = "registration_certificate"
 
     const val BIDDING_DURATION_SECONDS = 120
+    const val BIDDING_EXTENSION_SECONDS = 120
 }

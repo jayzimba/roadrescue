@@ -60,6 +60,7 @@ fun AddPartListingScreen(
     var condition by rememberSaveable { mutableStateOf(SparePartConditions.default) }
     var compatibleVehicles by remember { mutableStateOf<List<VehicleCompatibility>>(emptyList()) }
     var photoUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var quantityText by rememberSaveable { mutableStateOf("") }
     var selectedPayments by remember { mutableStateOf(setOf<PaymentMethod>()) }
     var showPhotoError by remember { mutableStateOf(false) }
     var showPaymentError by remember { mutableStateOf(false) }
@@ -82,7 +83,7 @@ fun AddPartListingScreen(
         !isLoading
 
     Scaffold(
-        topBar = { AppTopBar(onBack = onBack) },
+        topBar = { AppTopBar(title = "Add part listing", onBack = onBack) },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -113,6 +114,17 @@ fun AddPartListingScreen(
                 showCustomError = showCategoryError,
             )
             AuthTextField(priceText, { priceText = it }, "Price (ZMW)", Icons.Default.Inventory)
+            AuthTextField(
+                value = quantityText,
+                onValueChange = { quantityText = it.filter { ch -> ch.isDigit() } },
+                label = "Quantity in stock (optional)",
+                leadingIcon = Icons.Default.Inventory,
+            )
+            Text(
+                "Leave blank for unlimited stock.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            )
             VehicleDropdown(
                 label = "Condition",
                 options = SparePartConditions.all,
@@ -184,6 +196,8 @@ fun AddPartListingScreen(
                         return@AuthPrimaryButton
                     }
                     val price = priceText.toDoubleOrNull() ?: return@AuthPrimaryButton
+                    val quantity = quantityText.toIntOrNull()
+                    if (quantity != null && quantity < 1) return@AuthPrimaryButton
                     viewModel.addPart(
                         name = name,
                         category = resolvedCategory,
@@ -193,6 +207,7 @@ fun AddPartListingScreen(
                         photoUris = photoUris,
                         paymentMethods = selectedPayments,
                         context = context,
+                        quantity = quantity,
                         onSuccess = onBack,
                     )
                 },
@@ -226,7 +241,7 @@ fun AddServiceListingScreen(
         !isLoading
 
     Scaffold(
-        topBar = { AppTopBar(onBack = onBack) },
+        topBar = { AppTopBar(title = "Add service listing", onBack = onBack) },
     ) { padding ->
         Column(
             modifier = Modifier

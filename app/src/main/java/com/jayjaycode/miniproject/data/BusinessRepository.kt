@@ -40,6 +40,8 @@ class BusinessRepository(
     private fun requireUserId(): String =
         auth.currentUser?.uid ?: error("You must be signed in")
 
+    fun currentUserIdOrNull(): String? = auth.currentUser?.uid
+
     fun startObservingProfile() {
         val uid = auth.currentUser?.uid ?: return
         profileListener?.remove()
@@ -241,12 +243,14 @@ class BusinessRepository(
         photoUris: List<Uri>,
         paymentMethods: List<PaymentMethod>,
         context: Context,
+        quantity: Int? = null,
     ): SparePart {
         val shop = _myBusiness.value ?: error("Register a business first")
         val uid = requireUserId()
         if (photoUris.isEmpty()) error("Add at least one photo of the spare part")
         if (paymentMethods.isEmpty()) error("Select at least one accepted payment method")
         if (compatibleVehicles.isEmpty()) error("Add at least one compatible make and model")
+        if (quantity != null && quantity < 1) error("Quantity must be at least 1")
 
         val ref = firestore.collection(FirestoreConstants.PART_LISTINGS).document()
         val imageUrls = photoUris.mapIndexed { index, uri ->
@@ -272,6 +276,7 @@ class BusinessRepository(
             condition = condition.trim(),
             compatibleVehicles = compatibleVehicles,
             inStock = true,
+            quantity = quantity,
             shopId = shop.id,
             ownerId = uid,
             imageUrls = imageUrls,
@@ -376,20 +381,68 @@ class BusinessRepository(
         awaitClose { listener.remove() }
     }
 
+    suspend fun getCommittedQuantitiesForShop(shopId: String): Map<String, Int> {
+        val snapshot = firestore.collection(FirestoreConstants.ORDERS)
+            .whereEqualTo("shopId", shopId)
+            .get()
+            .await()
+        val orders = snapshot.documents.mapNotNull { FirestoreMappers.partOrderFromDocument(it) }
+        return SparePartStock.committedFromOrders(orders)
+    }
+
+    suspend fun getPartListing(partId: String): SparePart? {
+        val doc = firestore.collection(FirestoreConstants.PART_LISTINGS).document(partId).get().await()
+        return FirestoreMappers.partListingFromDocument(doc)
+    }
+
     suspend fun createPartOrder(
-        items: List<SparePart>,
+        items: List<CartLineItem>,
         paymentMethod: PaymentMethod,
         deliveryPhone: String,
         deliveryAddress: String,
+        deliveryLatitude: Double,
+        deliveryLongitude: Double,
     ): PartOrder {
         val user = auth.currentUser ?: error("You must be signed in")
         if (items.isEmpty()) error("Cart is empty")
-        val shopId = items.first().shopId
-        val shopOwnerId = items.first().ownerId
-        val shopName = items.first().seller
-        if (items.any { it.shopId != shopId }) {
+        val shopId = items.first().part.shopId
+        val shopOwnerId = items.first().part.ownerId
+        val shopName = items.first().part.seller
+        if (items.any { it.part.shopId != shopId }) {
             error("Checkout one shop at a time")
         }
+
+        val committed = getCommittedQuantitiesForShop(shopId).toMutableMap()
+        val orderLines = mutableListOf<PartOrderLineItem>()
+        var totalPrice = 0.0
+
+        items.forEach { line ->
+            val freshPart = getPartListing(line.part.id) ?: error("${line.part.name} is no longer available")
+            if (!freshPart.inStock) error("${freshPart.name} is out of stock")
+            val committedQty = committed[line.part.id] ?: 0
+            if (!SparePartStock.canFulfill(freshPart.quantity, committedQty, line.quantity)) {
+                val available = SparePartStock.availableQuantity(freshPart.quantity, committedQty) ?: 0
+                error(
+                    if (SparePartStock.isUnlimited(freshPart.quantity)) {
+                        "${freshPart.name} is not available in that quantity"
+                    } else {
+                        "Only $available of ${freshPart.name} available"
+                    },
+                )
+            }
+            orderLines += PartOrderLineItem(
+                partId = freshPart.id,
+                name = freshPart.name,
+                category = freshPart.category,
+                unitPrice = freshPart.price,
+                quantity = line.quantity,
+            )
+            totalPrice += freshPart.price * line.quantity
+            if (!SparePartStock.isUnlimited(freshPart.quantity)) {
+                committed[freshPart.id] = committedQty + line.quantity
+            }
+        }
+
         val order = PartOrder(
             id = "",
             buyerId = user.uid,
@@ -397,11 +450,13 @@ class BusinessRepository(
             shopId = shopId,
             shopName = shopName,
             shopOwnerId = shopOwnerId,
-            items = items,
-            totalPrice = items.sumOf { it.price },
+            items = orderLines,
+            totalPrice = totalPrice,
             paymentMethod = paymentMethod,
             deliveryPhone = deliveryPhone.trim(),
             deliveryAddress = deliveryAddress.trim(),
+            deliveryLatitude = deliveryLatitude,
+            deliveryLongitude = deliveryLongitude,
         )
         val ref = firestore.collection(FirestoreConstants.ORDERS).document()
         firestore.collection(FirestoreConstants.ORDERS)
@@ -446,6 +501,50 @@ class BusinessRepository(
                 val orders = snapshot?.documents?.mapNotNull { FirestoreMappers.partOrderFromDocument(it) }
                     .orEmpty()
                 trySend(orders)
+            }
+        awaitClose { listener.remove() }
+    }
+
+    fun observeMyPartOrders(buyerId: String): Flow<List<PartOrder>> = callbackFlow {
+        val listener = firestore.collection(FirestoreConstants.ORDERS)
+            .whereEqualTo("buyerId", buyerId)
+            .addSnapshotListener { snapshot, _ ->
+                val orders = snapshot?.documents
+                    ?.mapNotNull { FirestoreMappers.partOrderFromDocument(it) }
+                    .orEmpty()
+                    .sortedByDescending { it.createdAtMillis }
+                trySend(orders)
+            }
+        awaitClose { listener.remove() }
+    }
+
+    fun observePartOrder(orderId: String): Flow<PartOrder?> = callbackFlow {
+        val listener = firestore.collection(FirestoreConstants.ORDERS)
+            .document(orderId)
+            .addSnapshotListener { snapshot, _ ->
+                trySend(snapshot?.let { FirestoreMappers.partOrderFromDocument(it) })
+            }
+        awaitClose { listener.remove() }
+    }
+
+    fun observeMyServiceBookings(buyerId: String): Flow<List<ServiceBookingOrder>> = callbackFlow {
+        val listener = firestore.collection(FirestoreConstants.SERVICE_BOOKINGS)
+            .whereEqualTo("buyerId", buyerId)
+            .addSnapshotListener { snapshot, _ ->
+                val bookings = snapshot?.documents
+                    ?.mapNotNull { FirestoreMappers.serviceBookingFromDocument(it) }
+                    .orEmpty()
+                    .sortedByDescending { it.createdAtMillis }
+                trySend(bookings)
+            }
+        awaitClose { listener.remove() }
+    }
+
+    fun observeServiceBooking(bookingId: String): Flow<ServiceBookingOrder?> = callbackFlow {
+        val listener = firestore.collection(FirestoreConstants.SERVICE_BOOKINGS)
+            .document(bookingId)
+            .addSnapshotListener { snapshot, _ ->
+                trySend(snapshot?.let { FirestoreMappers.serviceBookingFromDocument(it) })
             }
         awaitClose { listener.remove() }
     }

@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
@@ -27,8 +29,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -38,10 +40,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jayjaycode.miniproject.data.MechanicBid
+import com.jayjaycode.miniproject.ui.components.AppTopBar
 import com.jayjaycode.miniproject.ui.components.PriceTag
 import com.jayjaycode.miniproject.ui.components.StatChip
+import com.jayjaycode.miniproject.ui.screens.auth.AuthErrorBanner
 import com.jayjaycode.miniproject.ui.theme.AmberWarning
 import com.jayjaycode.miniproject.ui.theme.OrangePrimary
 import com.jayjaycode.miniproject.ui.theme.TextSecondary
@@ -51,29 +54,44 @@ import com.jayjaycode.miniproject.util.CurrencyFormatter
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BiddingScreen(
+    viewModel: RescueViewModel,
     onBidAccepted: () -> Unit,
+    onBrowseApp: () -> Unit,
     onCancel: () -> Unit,
-    viewModel: RescueViewModel = viewModel(),
 ) {
     val bids by viewModel.bids.collectAsState()
     val secondsLeft by viewModel.secondsLeft.collectAsState()
     val acceptedJob by viewModel.acceptedJob.collectAsState()
-    val duration = viewModel.biddingDuration
+    val activeRequest by viewModel.activeRequest.collectAsState()
+    val actionError by viewModel.actionError.collectAsState()
 
     LaunchedEffect(acceptedJob) {
         if (acceptedJob != null) onBidAccepted()
     }
 
     val progress by animateFloatAsState(
-        if (duration > 0) secondsLeft.toFloat() / duration else 0f,
+        viewModel.biddingProgressFraction(activeRequest, secondsLeft),
         label = "timer",
     )
     val minutes = secondsLeft / 60
     val seconds = secondsLeft % 60
     val timerText = "%02d:%02d".format(minutes, seconds)
+    val autoAccept = activeRequest?.autoAcceptLowestBid == true
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Card(
+    Scaffold(
+        topBar = {
+            AppTopBar(
+                title = "Live bids",
+                onBack = onBrowseApp,
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
@@ -118,6 +136,52 @@ fun BiddingScreen(
                 }
             }
 
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Auto-accept lowest bid", fontWeight = FontWeight.Medium)
+                            Text(
+                                "When the timer ends, the cheapest bid is accepted automatically.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                            )
+                        }
+                        Switch(
+                            checked = autoAccept,
+                            onCheckedChange = { viewModel.setAutoAcceptLowestBid(it) },
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { viewModel.extendBiddingTime() },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Add 2 minutes")
+                        }
+                        OutlinedButton(
+                            onClick = onBrowseApp,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Browse app")
+                        }
+                    }
+                }
+            }
+
+            actionError?.let {
+                AuthErrorBanner(it)
+                Spacer(Modifier.height(8.dp))
+            }
+
             if (bids.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -134,13 +198,14 @@ fun BiddingScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     items(bids, key = { it.id }) { bid ->
                         BidCard(
                             bid = bid,
                             enabled = secondsLeft > 0 || bids.size == 1,
+                            isLowest = bid == bids.firstOrNull(),
                             onAccept = { viewModel.acceptBid(bid) },
                         )
                     }
@@ -151,24 +216,26 @@ fun BiddingScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 OutlinedButton(
-                    onClick = {
-                        viewModel.cancelRequest()
-                        onCancel()
-                    },
-                    modifier = Modifier.weight(1f),
+                    onClick = { viewModel.cancelRequest(onDone = onCancel) },
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Cancel request")
                 }
             }
+        }
     }
 }
 
 @Composable
-private fun BidCard(bid: MechanicBid, enabled: Boolean, onAccept: () -> Unit) {
-    Card(shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)) {
+private fun BidCard(
+    bid: MechanicBid,
+    enabled: Boolean,
+    isLowest: Boolean,
+    onAccept: () -> Unit,
+) {
+    Card(shape = RoundedCornerShape(14.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -178,6 +245,9 @@ private fun BidCard(bid: MechanicBid, enabled: Boolean, onAccept: () -> Unit) {
                 Column {
                     Text(bid.shopName, fontWeight = FontWeight.Bold)
                     Text("★ ${bid.shopRating}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    if (isLowest) {
+                        Text("Lowest bid", style = MaterialTheme.typography.labelSmall, color = OrangePrimary)
+                    }
                 }
                 PriceTag(bid.price)
             }

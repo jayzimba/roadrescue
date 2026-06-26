@@ -38,7 +38,7 @@ class LocationHelper(private val context: Context) {
             val location = getLastKnownLocation()
                 ?: return Result.failure(Exception("Could not get GPS location"))
 
-            val label = reverseGeocode(location.latitude, location.longitude)
+            val label = reverseGeocodeInternal(location.latitude, location.longitude)
             Result.success(
                 LocationResult(
                     latitude = location.latitude,
@@ -60,8 +60,10 @@ class LocationHelper(private val context: Context) {
             }
     }
 
+    suspend fun reverseGeocode(lat: Double, lng: Double): String = reverseGeocodeInternal(lat, lng)
+
     @Suppress("DEPRECATION")
-    private fun reverseGeocode(lat: Double, lng: Double): String {
+    private fun reverseGeocodeInternal(lat: Double, lng: Double): String {
         return try {
             if (!Geocoder.isPresent()) return formatCoords(lat, lng)
             val addresses = Geocoder(context, Locale.getDefault()).getFromLocation(lat, lng, 1)

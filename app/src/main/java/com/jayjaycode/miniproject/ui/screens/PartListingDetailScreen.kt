@@ -2,6 +2,7 @@ package com.jayjaycode.miniproject.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,19 +10,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,6 +33,7 @@ import com.jayjaycode.miniproject.ui.components.AppTopBar
 import com.jayjaycode.miniproject.ui.components.ListingImageCarousel
 import com.jayjaycode.miniproject.ui.components.PaymentMethodChips
 import com.jayjaycode.miniproject.ui.components.PriceTag
+import com.jayjaycode.miniproject.ui.components.QuantityStepper
 import com.jayjaycode.miniproject.ui.theme.GreenAccent
 import com.jayjaycode.miniproject.ui.theme.TextSecondary
 import com.jayjaycode.miniproject.ui.viewmodel.MarketplaceViewModel
@@ -38,22 +42,82 @@ import com.jayjaycode.miniproject.ui.viewmodel.MarketplaceViewModel
 @Composable
 fun PartListingDetailScreen(
     part: SparePart,
-    inCart: Boolean,
+    cartQuantity: Int,
+    availabilityLabel: String,
+    maxQuantity: Int?,
+    purchasable: Boolean,
     onBack: () -> Unit,
-    onAddToCart: () -> Unit,
+    onAddToCart: (Int) -> Unit,
+    onUpdateQuantity: (Int) -> Unit,
     onRemoveFromCart: () -> Unit,
 ) {
+    var selectedQuantity by rememberSaveable(part.id) { mutableIntStateOf(1) }
+
+    LaunchedEffect(cartQuantity) {
+        if (cartQuantity > 0) {
+            selectedQuantity = cartQuantity
+        }
+    }
+
+    LaunchedEffect(maxQuantity) {
+        if (maxQuantity != null && selectedQuantity > maxQuantity) {
+            selectedQuantity = maxQuantity.coerceAtLeast(1)
+        }
+    }
+
     Scaffold(
-        topBar = { AppTopBar(onBack = onBack) },
+        topBar = { AppTopBar(title = part.name, onBack = onBack) },
         bottomBar = {
-            Button(
-                onClick = if (inCart) onRemoveFromCart else onAddToCart,
-                enabled = part.inStock,
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(if (inCart) "Remove from cart" else "Add to cart")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Quantity", fontWeight = FontWeight.Medium)
+                    QuantityStepper(
+                        quantity = selectedQuantity,
+                        onQuantityChange = { qty ->
+                            selectedQuantity = qty
+                            if (cartQuantity > 0) onUpdateQuantity(qty)
+                        },
+                        max = maxQuantity,
+                        enabled = purchasable || cartQuantity > 0,
+                    )
+                }
+                if (cartQuantity > 0) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedButton(
+                            onClick = onRemoveFromCart,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Remove from cart")
+                        }
+                        Button(
+                            onClick = { onUpdateQuantity(selectedQuantity) },
+                            enabled = purchasable,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Update cart")
+                        }
+                    }
+                } else {
+                    Button(
+                        onClick = { onAddToCart(selectedQuantity) },
+                        enabled = purchasable,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Add to cart")
+                    }
+                }
             }
         },
     ) { padding ->
@@ -76,9 +140,20 @@ fun PartListingDetailScreen(
                 PriceTag(part.price)
 
                 Text(
-                    if (part.inStock) "In stock" else "Out of stock",
+                    availabilityLabel,
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (part.inStock) GreenAccent else TextSecondary,
+                    color = if (purchasable) GreenAccent else TextSecondary,
+                )
+                part.quantity?.let {
+                    Text(
+                        "Listed quantity: $it",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                    )
+                } ?: Text(
+                    "Listed quantity: Unlimited",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
                 )
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
@@ -90,25 +165,29 @@ fun PartListingDetailScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Compatible vehicles", fontWeight = FontWeight.SemiBold)
                         part.compatibleVehicles.forEach { fitment ->
-                            Text(
-                                "• ${fitment.displayLabel()}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextSecondary,
-                            )
+                            Text("• ${fitment.displayLabel()}", color = TextSecondary)
                         }
                     }
                 }
 
                 if (part.paymentMethods.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Accepted payment", fontWeight = FontWeight.SemiBold)
+                        Text("Payment methods", fontWeight = FontWeight.SemiBold)
                         PaymentMethodChips(methods = part.paymentMethods)
                     }
                 }
 
-                Spacer(Modifier.height(72.dp))
+                Spacer(Modifier.height(80.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun DetailRow(label: String, value: String) {
+    Column {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+        Text(value, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -120,12 +199,11 @@ fun PartListingDetailRoute(
     onBack: () -> Unit,
 ) {
     val parts by viewModel.parts.collectAsState()
-    val cart by viewModel.cart.collectAsState()
     val part = parts.find { it.id == partId }
 
     if (part == null) {
         Scaffold(
-            topBar = { AppTopBar(onBack = onBack) },
+            topBar = { AppTopBar(title = "Part details", onBack = onBack) },
         ) { padding ->
             Text(
                 "This listing is no longer available.",
@@ -138,17 +216,13 @@ fun PartListingDetailRoute(
 
     PartListingDetailScreen(
         part = part,
-        inCart = cart.any { it.id == part.id },
+        cartQuantity = viewModel.cartQuantityFor(part.id),
+        availabilityLabel = viewModel.availabilityLabel(part),
+        maxQuantity = viewModel.maxSelectableQuantity(part),
+        purchasable = viewModel.isPurchasable(part),
         onBack = onBack,
-        onAddToCart = { viewModel.addToCart(part) },
+        onAddToCart = { qty -> viewModel.addToCart(part, qty) },
+        onUpdateQuantity = { qty -> viewModel.updateCartQuantity(part.id, qty) },
         onRemoveFromCart = { viewModel.removeFromCart(part) },
     )
-}
-
-@Composable
-private fun DetailRow(label: String, value: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, fontWeight = FontWeight.SemiBold)
-        Text(value, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-    }
 }

@@ -1,5 +1,6 @@
 package com.jayjaycode.miniproject.ui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
@@ -14,9 +15,13 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import com.jayjaycode.miniproject.ui.components.AppTopBar
+import com.jayjaycode.miniproject.ui.components.BiddingFloatingCard
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -32,16 +37,24 @@ import com.jayjaycode.miniproject.ui.screens.ActiveJobScreen
 import com.jayjaycode.miniproject.ui.screens.AddPartListingScreen
 import com.jayjaycode.miniproject.ui.screens.AddServiceListingScreen
 import com.jayjaycode.miniproject.ui.screens.BiddingScreen
+import com.jayjaycode.miniproject.ui.screens.CheckoutScreen
 import com.jayjaycode.miniproject.ui.screens.HomeScreen
 import com.jayjaycode.miniproject.ui.screens.MarketplaceScreen
+import com.jayjaycode.miniproject.ui.screens.MyOrdersScreen
+import com.jayjaycode.miniproject.ui.screens.OrderConfirmationScreen
 import com.jayjaycode.miniproject.ui.screens.PartListingDetailRoute
+import com.jayjaycode.miniproject.ui.screens.PartOrderDetailScreen
 import com.jayjaycode.miniproject.ui.screens.ProfileScreen
 import com.jayjaycode.miniproject.ui.screens.ProviderDashboardScreen
 import com.jayjaycode.miniproject.ui.screens.RegisterBusinessScreen
 import com.jayjaycode.miniproject.ui.screens.RequestFormScreen
 import com.jayjaycode.miniproject.ui.screens.RequestHistoryScreen
+import com.jayjaycode.miniproject.ui.screens.ServiceBookingDetailScreen
 import com.jayjaycode.miniproject.ui.screens.ServiceBookingScreen
 import com.jayjaycode.miniproject.ui.viewmodel.MarketplaceViewModel
+import com.jayjaycode.miniproject.ui.viewmodel.PartOrderDetailViewModel
+import com.jayjaycode.miniproject.ui.viewmodel.RescueViewModel
+import com.jayjaycode.miniproject.ui.viewmodel.ServiceBookingDetailViewModel
 
 private val bottomNavRoutes = setOf(NavRoutes.HOME, NavRoutes.MARKETPLACE, NavRoutes.SERVICE_BOOKING)
 
@@ -53,15 +66,39 @@ fun RoadRescueApp(
     onSignOut: () -> Unit,
 ) {
     val navController = rememberNavController()
+    val rescueViewModel: RescueViewModel = viewModel()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route?.substringBefore("/")
+
+    val isBiddingActive by rescueViewModel.isBiddingActive.collectAsState()
+    val activeRequest by rescueViewModel.activeRequest.collectAsState()
+    val biddingSecondsLeft by rescueViewModel.secondsLeft.collectAsState()
+    val bids by rescueViewModel.bids.collectAsState()
+    val lowestBid by rescueViewModel.lowestBid.collectAsState()
+    val biddingOverlayExpanded by rescueViewModel.biddingOverlayExpanded.collectAsState()
+    val acceptedJob by rescueViewModel.acceptedJob.collectAsState()
+
+    LaunchedEffect(acceptedJob) {
+        if (acceptedJob != null && currentRoute != NavRoutes.ACTIVE_JOB) {
+            navController.navigate(NavRoutes.ACTIVE_JOB) {
+                popUpTo(NavRoutes.HOME)
+            }
+        }
+    }
     val showBottomBar = currentRoute in bottomNavRoutes
     val showMainTopBar = showBottomBar
+    val mainTopBarTitle = when (currentRoute) {
+        NavRoutes.HOME -> "Rescue"
+        NavRoutes.MARKETPLACE -> "Marketplace"
+        NavRoutes.SERVICE_BOOKING -> "Book service"
+        else -> ""
+    }
 
     Scaffold(
         topBar = {
             if (showMainTopBar) {
                 AppTopBar(
+                    title = mainTopBarTitle,
                     actions = {
                         IconButton(onClick = { navController.navigate(NavRoutes.PROFILE) }) {
                             Icon(Icons.Default.Person, contentDescription = "Profile")
@@ -113,11 +150,11 @@ fun RoadRescueApp(
             }
         },
     ) { padding ->
-        NavHost(
-            navController = navController,
-            startDestination = NavRoutes.HOME,
-            modifier = Modifier.padding(padding),
-        ) {
+        Box(modifier = Modifier.padding(padding)) {
+            NavHost(
+                navController = navController,
+                startDestination = NavRoutes.HOME,
+            ) {
             composable(NavRoutes.HOME) {
                 HomeScreen(
                     onRequestTowing = { navController.navigate(NavRoutes.requestForm("towing")) },
@@ -148,10 +185,11 @@ fun RoadRescueApp(
                 }
                 RequestFormScreen(
                     requestType = type,
+                    viewModel = rescueViewModel,
                     onBack = { navController.popBackStack() },
                     onSubmitted = {
-                        navController.navigate(NavRoutes.BIDDING) {
-                            popUpTo(NavRoutes.HOME)
+                        navController.navigate(NavRoutes.HOME) {
+                            popUpTo(NavRoutes.HOME) { inclusive = true }
                         }
                     },
                 )
@@ -159,9 +197,17 @@ fun RoadRescueApp(
 
             composable(NavRoutes.BIDDING) {
                 BiddingScreen(
+                    viewModel = rescueViewModel,
                     onBidAccepted = {
                         navController.navigate(NavRoutes.ACTIVE_JOB) {
                             popUpTo(NavRoutes.HOME)
+                        }
+                    },
+                    onBrowseApp = {
+                        navController.navigate(NavRoutes.HOME) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
                         }
                     },
                     onCancel = {
@@ -174,6 +220,7 @@ fun RoadRescueApp(
 
             composable(NavRoutes.ACTIVE_JOB) {
                 ActiveJobScreen(
+                    viewModel = rescueViewModel,
                     onDone = {
                         navController.navigate(NavRoutes.HOME) {
                             popUpTo(NavRoutes.HOME) { inclusive = true }
@@ -190,6 +237,38 @@ fun RoadRescueApp(
                 MarketplaceScreen(
                     onPartClick = { partId ->
                         navController.navigate(NavRoutes.partListing(partId))
+                    },
+                    onCheckout = {
+                        navController.navigate(NavRoutes.CHECKOUT)
+                    },
+                )
+            }
+
+            composable(NavRoutes.CHECKOUT) {
+                val parentEntry = remember {
+                    navController.getBackStackEntry(NavRoutes.MARKETPLACE)
+                }
+                val marketplaceViewModel: MarketplaceViewModel = viewModel(parentEntry)
+                CheckoutScreen(
+                    viewModel = marketplaceViewModel,
+                    onBack = { navController.popBackStack() },
+                    onOrderPlaced = {
+                        navController.navigate(NavRoutes.ORDER_CONFIRMATION) {
+                            popUpTo(NavRoutes.CHECKOUT) { inclusive = true }
+                        }
+                    },
+                )
+            }
+
+            composable(NavRoutes.ORDER_CONFIRMATION) {
+                val parentEntry = remember {
+                    navController.getBackStackEntry(NavRoutes.MARKETPLACE)
+                }
+                val marketplaceViewModel: MarketplaceViewModel = viewModel(parentEntry)
+                OrderConfirmationScreen(
+                    viewModel = marketplaceViewModel,
+                    onDone = {
+                        navController.popBackStack(NavRoutes.MARKETPLACE, inclusive = false)
                     },
                 )
             }
@@ -219,7 +298,46 @@ fun RoadRescueApp(
                     onBack = { navController.popBackStack() },
                     onRegisterBusiness = { navController.navigate(NavRoutes.REGISTER_BUSINESS) },
                     onOpenDashboard = { navController.navigate(NavRoutes.PROVIDER_DASHBOARD) },
+                    onOpenMyOrders = { navController.navigate(NavRoutes.MY_ORDERS) },
+                    onOpenPartOrder = { navController.navigate(NavRoutes.partOrderDetail(it)) },
+                    onOpenServiceBooking = { navController.navigate(NavRoutes.serviceBookingDetail(it)) },
                     onSignOut = onSignOut,
+                )
+            }
+
+            composable(NavRoutes.MY_ORDERS) {
+                MyOrdersScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenPartOrder = { navController.navigate(NavRoutes.partOrderDetail(it)) },
+                    onOpenServiceBooking = { navController.navigate(NavRoutes.serviceBookingDetail(it)) },
+                )
+            }
+
+            composable(
+                route = NavRoutes.PART_ORDER_DETAIL,
+                arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val orderId = backStackEntry.arguments?.getString("orderId").orEmpty()
+                val detailViewModel: PartOrderDetailViewModel = viewModel(
+                    factory = PartOrderDetailViewModel.factory(orderId),
+                )
+                PartOrderDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    viewModel = detailViewModel,
+                )
+            }
+
+            composable(
+                route = NavRoutes.SERVICE_BOOKING_DETAIL,
+                arguments = listOf(navArgument("bookingId") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val bookingId = backStackEntry.arguments?.getString("bookingId").orEmpty()
+                val detailViewModel: ServiceBookingDetailViewModel = viewModel(
+                    factory = ServiceBookingDetailViewModel.factory(bookingId),
+                )
+                ServiceBookingDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    viewModel = detailViewModel,
                 )
             }
 
@@ -244,6 +362,29 @@ fun RoadRescueApp(
 
             composable(NavRoutes.ADD_SERVICE_LISTING) {
                 AddServiceListingScreen(onBack = { navController.popBackStack() })
+            }
+            }
+
+            if (isBiddingActive && activeRequest != null && currentRoute != NavRoutes.BIDDING) {
+                BiddingFloatingCard(
+                    request = activeRequest!!,
+                    secondsLeft = biddingSecondsLeft,
+                    bidCount = bids.size,
+                    lowestBid = lowestBid,
+                    progress = rescueViewModel.biddingProgressFraction(activeRequest, biddingSecondsLeft),
+                    expanded = biddingOverlayExpanded,
+                    autoAcceptLowest = activeRequest!!.autoAcceptLowestBid,
+                    onToggleExpanded = { rescueViewModel.toggleBiddingOverlay() },
+                    onOpenBidding = {
+                        navController.navigate(NavRoutes.BIDDING) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onExtendTime = { rescueViewModel.extendBiddingTime() },
+                    onAutoAcceptChanged = { rescueViewModel.setAutoAcceptLowestBid(it) },
+                    onAcceptLowest = { rescueViewModel.acceptLowestBid() },
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
             }
         }
     }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -47,11 +48,11 @@ import com.jayjaycode.miniproject.ui.screens.auth.AuthErrorBanner
 import com.jayjaycode.miniproject.ui.screens.auth.AuthSuccessBanner
 import com.jayjaycode.miniproject.ui.screens.auth.AuthTextField
 import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.Store
 import com.jayjaycode.miniproject.ui.theme.GreenAccent
 import com.jayjaycode.miniproject.ui.theme.NavyDark
 import com.jayjaycode.miniproject.ui.theme.OrangePrimary
 import com.jayjaycode.miniproject.ui.theme.TextSecondary
+import com.jayjaycode.miniproject.ui.viewmodel.MyOrdersViewModel
 import com.jayjaycode.miniproject.ui.viewmodel.ProfileViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,21 +63,26 @@ fun ProfileScreen(
     onBack: () -> Unit,
     onRegisterBusiness: () -> Unit,
     onOpenDashboard: () -> Unit,
+    onOpenMyOrders: () -> Unit,
+    onOpenPartOrder: (String) -> Unit,
+    onOpenServiceBooking: (String) -> Unit,
     onSignOut: () -> Unit,
     viewModel: ProfileViewModel = viewModel(),
+    ordersViewModel: MyOrdersViewModel = viewModel(),
 ) {
     val profile by viewModel.userProfile.collectAsState()
     val business by viewModel.myBusiness.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val successMessage by viewModel.successMessage.collectAsState()
+    val myOrders by ordersViewModel.allOrders.collectAsState()
 
     var phone by rememberSaveable { mutableStateOf("") }
     val displayName = profile?.displayName?.takeIf { it.isNotBlank() } ?: userName
     val email = profile?.email?.takeIf { it.isNotBlank() } ?: userEmail
 
     Scaffold(
-        topBar = { AppTopBar(onBack = onBack) },
+        topBar = { AppTopBar(title = "Profile", onBack = onBack) },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -128,6 +134,40 @@ fun ProfileScreen(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Save phone")
+                    }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = OrangePrimary)
+                        Text("My orders", fontWeight = FontWeight.SemiBold)
+                    }
+                    if (myOrders.isEmpty()) {
+                        Text(
+                            "No orders yet. Buy spare parts or book a service to track status here.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                        )
+                    } else {
+                        myOrders.take(3).forEach { item ->
+                            BuyerOrderCard(
+                                item = item,
+                                onClick = {
+                                    when (item) {
+                                        is BuyerOrderListItem.Part -> onOpenPartOrder(item.id)
+                                        is BuyerOrderListItem.Service -> onOpenServiceBooking(item.id)
+                                    }
+                                },
+                            )
+                        }
+                    }
+                    OutlinedButton(onClick = onOpenMyOrders, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (myOrders.isEmpty()) "View orders" else "View all orders")
                     }
                 }
             }
