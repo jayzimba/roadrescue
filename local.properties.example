@@ -1,0 +1,5 @@
+# Copy to local.properties and fill in your keys.
+sdk.dir=/path/to/Android/sdk
+
+# Google Maps SDK key (enable Maps SDK for Android in Google Cloud Console)
+MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY

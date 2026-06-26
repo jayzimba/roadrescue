@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "369383139285",
+    "project_id": "remoterescue-1eb43",
+    "storage_bucket": "remoterescue-1eb43.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:369383139285:android:8b2422f423d18649173f5c",
+        "android_client_info": {
+          "package_name": "com.jayjaycode.miniproject"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD5hyyCfbs3OM1MjIifG4LIWSdY1otHUaA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
