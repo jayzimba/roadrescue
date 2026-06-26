@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jayjaycode.miniproject.data.BreakdownRequest
+import com.jayjaycode.miniproject.data.ProviderBidEntry
 import com.jayjaycode.miniproject.data.BusinessRepository
 import com.jayjaycode.miniproject.data.BusinessType
 import com.jayjaycode.miniproject.data.OrderStatus
@@ -39,6 +40,13 @@ class ProviderViewModel(
         .flatMapLatest { business ->
             if (business == null) flowOf(emptyList())
             else repository.observeProviderJobs(business.id)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val providerBidEntries: StateFlow<List<ProviderBidEntry>> = repository.myBusiness
+        .flatMapLatest { business ->
+            if (business == null) flowOf(emptyList())
+            else repository.observeProviderBidEntries(business.id)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

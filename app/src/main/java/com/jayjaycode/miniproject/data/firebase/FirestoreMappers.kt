@@ -92,6 +92,7 @@ object FirestoreMappers {
             userId = doc.getString("userId").orEmpty(),
             biddingEndsAtMillis = doc.getTimestamp("biddingEndsAt")?.toDate()?.time ?: 0L,
             autoAcceptLowestBid = doc.getBoolean("autoAcceptLowestBid") ?: false,
+            acceptedShopId = doc.getString("acceptedShopId").orEmpty(),
         )
     }
 

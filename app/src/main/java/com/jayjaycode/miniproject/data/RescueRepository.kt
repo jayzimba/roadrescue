@@ -81,6 +81,46 @@ class RescueRepository(
         }
     }
 
+    private suspend fun ensureFreshAuthToken() {
+        auth.currentUser?.getIdToken(true)?.await()
+    }
+
+    private suspend fun uploadBreakdownPhotos(
+        userId: String,
+        requestId: String,
+        photoUris: List<Uri>,
+        context: Context,
+    ): List<String> {
+        if (photoUris.isEmpty()) return emptyList()
+        ensureFreshAuthToken()
+
+        val uploaded = mutableListOf<String>()
+        var lastError: Exception? = null
+        photoUris.forEachIndexed { index, uri ->
+            if (uri.scheme?.startsWith("http") == true) {
+                uploaded.add(uri.toString())
+                return@forEachIndexed
+            }
+            runCatching {
+                FirebaseStorageHelper.uploadImage(
+                    pathSegments = listOf(
+                        FirestoreConstants.BREAKDOWN_REQUEST_PHOTOS,
+                        userId,
+                        requestId,
+                        "photo_$index.jpg",
+                    ),
+                    sourceUri = uri,
+                    context = context,
+                )
+            }.onSuccess { uploaded.add(it) }
+                .onFailure { lastError = it as? Exception ?: Exception(it.message, it) }
+        }
+        if (uploaded.isEmpty() && lastError != null) {
+            throw lastError!!
+        }
+        return uploaded
+    }
+
     suspend fun submitBreakdownRequest(
         type: RequestType,
         vehicle: VehicleInfo,
@@ -97,22 +137,12 @@ class RescueRepository(
         val biddingEndsAt = now + FirestoreConstants.BIDDING_DURATION_SECONDS * 1000L
 
         val docRef = firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS).document()
-        val uploadedPhotoUrls = photoUris.mapIndexed { index, uri ->
-            if (uri.scheme?.startsWith("http") == true) {
-                uri.toString()
-            } else {
-                FirebaseStorageHelper.uploadImage(
-                    pathSegments = listOf(
-                        FirestoreConstants.BREAKDOWN_REQUEST_PHOTOS,
-                        user.uid,
-                        docRef.id,
-                        "photo_$index.jpg",
-                    ),
-                    sourceUri = uri,
-                    context = context,
-                )
-            }
-        }
+        val uploadedPhotoUrls = uploadBreakdownPhotos(
+            userId = user.uid,
+            requestId = docRef.id,
+            photoUris = photoUris,
+            context = context,
+        )
 
         val request = BreakdownRequest(
             id = docRef.id,

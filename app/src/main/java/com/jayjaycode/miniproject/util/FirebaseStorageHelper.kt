@@ -144,8 +144,11 @@ object FirebaseStorageHelper {
         val message = when (e.errorCode) {
             StorageException.ERROR_OBJECT_NOT_FOUND,
             StorageException.ERROR_BUCKET_NOT_FOUND -> storageSetupMessage()
-            StorageException.ERROR_NOT_AUTHORIZED,
-            StorageException.ERROR_NOT_AUTHENTICATED -> "Upload denied. Please sign out and sign in again."
+            StorageException.ERROR_NOT_AUTHORIZED ->
+                "Photo upload denied. Ask your developer to deploy Firebase Storage rules " +
+                    "(firebase deploy --only storage), then try again."
+            StorageException.ERROR_NOT_AUTHENTICATED ->
+                "Please sign in again to upload photos."
             StorageException.ERROR_QUOTA_EXCEEDED -> "Storage quota exceeded. Contact support."
             else -> {
                 val raw = e.message.orEmpty()

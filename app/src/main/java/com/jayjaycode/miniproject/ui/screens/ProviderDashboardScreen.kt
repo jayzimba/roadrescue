@@ -53,6 +53,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jayjaycode.miniproject.data.BreakdownRequest
 import com.jayjaycode.miniproject.data.OrderStatus
 import com.jayjaycode.miniproject.data.PartOrder
+import com.jayjaycode.miniproject.data.ProviderBidEntry
+import com.jayjaycode.miniproject.data.ProviderBidOutcome
 import com.jayjaycode.miniproject.data.RequestType
 import com.jayjaycode.miniproject.data.ServiceBookingOrder
 import com.jayjaycode.miniproject.data.ServicePackage
@@ -78,6 +80,7 @@ fun ProviderDashboardScreen(
     val business by viewModel.myBusiness.collectAsState()
     val openJobs by viewModel.openJobs.collectAsState()
     val providerJobs by viewModel.providerJobs.collectAsState()
+    val providerBidEntries by viewModel.providerBidEntries.collectAsState()
     val myParts by viewModel.myParts.collectAsState()
     val myServices by viewModel.myServices.collectAsState()
     val incomingOrders by viewModel.incomingOrders.collectAsState()
@@ -171,7 +174,7 @@ fun ProviderDashboardScreen(
 
             when (selectedTab) {
                 0 -> OpenJobsTab(openJobs, onBid = { bidTarget = it })
-                1 -> ProviderJobsTab(providerJobs)
+                1 -> ProviderJobsTab(providerBidEntries, providerJobs)
                 2 -> ListingsTab(myParts, myServices, onToggleStock = { id, stock ->
                     viewModel.togglePartStock(id, stock)
                 })
@@ -213,14 +216,123 @@ private fun OpenJobsTab(jobs: List<BreakdownRequest>, onBid: (BreakdownRequest) 
 }
 
 @Composable
-private fun ProviderJobsTab(jobs: List<BreakdownRequest>) {
-    if (jobs.isEmpty()) {
-        EmptyState("No accepted jobs yet.")
+private fun ProviderJobsTab(
+    bidEntries: List<ProviderBidEntry>,
+    activeJobs: List<BreakdownRequest>,
+) {
+    val pendingBids = bidEntries.filter { it.outcome == ProviderBidOutcome.PENDING }
+    val wonBids = bidEntries.filter { it.outcome == ProviderBidOutcome.WON }
+    val otherBids = bidEntries.filter {
+        it.outcome == ProviderBidOutcome.LOST || it.outcome == ProviderBidOutcome.CLOSED
+    }
+    val activeJobIds = activeJobs.map { it.id }.toSet()
+    val wonNotInActive = wonBids.filter { it.requestId !in activeJobIds }
+
+    if (bidEntries.isEmpty() && activeJobs.isEmpty()) {
+        EmptyState("No bids or jobs yet. Place bids from the Open jobs tab.")
         return
     }
+
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(jobs, key = { it.id }) { job ->
-            JobCard(job, actionLabel = null, onAction = {})
+        if (pendingBids.isNotEmpty()) {
+            item {
+                Text("My bids", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Waiting for the customer to accept",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                )
+            }
+            items(pendingBids, key = { "pending-${it.requestId}" }) { entry ->
+                ProviderBidCard(entry)
+            }
+        }
+
+        if (activeJobs.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(if (pendingBids.isNotEmpty()) 8.dp else 0.dp))
+                Text("Active jobs", fontWeight = FontWeight.SemiBold)
+            }
+            items(activeJobs, key = { "active-${it.id}" }) { job ->
+                JobCard(job, actionLabel = null, onAction = {})
+            }
+        } else if (wonNotInActive.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(if (pendingBids.isNotEmpty()) 8.dp else 0.dp))
+                Text("Won bids", fontWeight = FontWeight.SemiBold)
+            }
+            items(wonNotInActive, key = { "won-${it.requestId}" }) { entry ->
+                ProviderBidCard(entry)
+            }
+        }
+
+        if (otherBids.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(8.dp))
+                Text("Past bids", fontWeight = FontWeight.SemiBold, color = TextSecondary)
+            }
+            items(otherBids, key = { "past-${it.requestId}" }) { entry ->
+                ProviderBidCard(entry)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProviderBidCard(entry: ProviderBidEntry) {
+    val request = entry.request
+    val outcomeLabel = when (entry.outcome) {
+        ProviderBidOutcome.PENDING -> "Awaiting customer"
+        ProviderBidOutcome.WON -> "Bid accepted"
+        ProviderBidOutcome.LOST -> "Not selected"
+        ProviderBidOutcome.CLOSED -> "Closed"
+    }
+    val outcomeColor = when (entry.outcome) {
+        ProviderBidOutcome.PENDING -> OrangePrimary
+        ProviderBidOutcome.WON -> GreenAccent
+        ProviderBidOutcome.LOST, ProviderBidOutcome.CLOSED -> TextSecondary
+    }
+
+    Card(shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    request?.let { if (it.type == RequestType.TOWING) "Towing" else "Mechanic" }
+                        ?: "Rescue request",
+                    fontWeight = FontWeight.Bold,
+                    color = OrangePrimary,
+                )
+                Text(outcomeLabel, style = MaterialTheme.typography.labelSmall, color = outcomeColor)
+            }
+            request?.let {
+                Text(it.locationLabel, fontWeight = FontWeight.Medium)
+                Text(
+                    "${it.vehicle.make} ${it.vehicle.model} (${it.vehicle.year})",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(it.problemDescription, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                if (it.photoUris.isNotEmpty()) {
+                    BreakdownPhotoStrip(photoUrls = it.photoUris)
+                }
+            } ?: Text(
+                "Loading request details…",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text("Your bid", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                    PriceTag(entry.bid.price)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("ETA ${entry.bid.etaMinutes} min", style = MaterialTheme.typography.bodySmall)
+                    Text(entry.bid.message, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                }
+            }
         }
     }
 }

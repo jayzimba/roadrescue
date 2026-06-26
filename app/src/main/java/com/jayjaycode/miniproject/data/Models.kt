@@ -86,7 +86,32 @@ data class BreakdownRequest(
     val userId: String = "",
     val biddingEndsAtMillis: Long = 0L,
     val autoAcceptLowestBid: Boolean = false,
+    val acceptedShopId: String = "",
 )
+
+enum class ProviderBidOutcome {
+    PENDING,
+    WON,
+    LOST,
+    CLOSED,
+}
+
+data class ProviderBidEntry(
+    val requestId: String,
+    val request: BreakdownRequest?,
+    val bid: MechanicBid,
+) {
+    val outcome: ProviderBidOutcome
+        get() {
+            val req = request ?: return ProviderBidOutcome.PENDING
+            return when (req.status) {
+                RequestStatus.BIDDING -> ProviderBidOutcome.PENDING
+                RequestStatus.ACCEPTED, RequestStatus.IN_PROGRESS ->
+                    if (req.acceptedShopId == bid.shopId) ProviderBidOutcome.WON else ProviderBidOutcome.LOST
+                else -> ProviderBidOutcome.CLOSED
+            }
+        }
+}
 
 data class MechanicBid(
     val id: String,

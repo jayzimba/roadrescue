@@ -605,6 +605,66 @@ class BusinessRepository(
         awaitClose { listener.remove() }
     }
 
+    fun observeProviderBidEntries(shopId: String): Flow<List<ProviderBidEntry>> = callbackFlow {
+        val bidDocs = mutableMapOf<String, MechanicBid>()
+        val requests = mutableMapOf<String, BreakdownRequest?>()
+        val requestListeners = mutableMapOf<String, ListenerRegistration>()
+
+        fun emitEntries() {
+            val entries = bidDocs.map { (requestId, bid) ->
+                ProviderBidEntry(
+                    requestId = requestId,
+                    request = requests[requestId],
+                    bid = bid,
+                )
+            }.sortedWith(
+                compareByDescending<ProviderBidEntry> { it.outcome == ProviderBidOutcome.WON }
+                    .thenByDescending { it.outcome == ProviderBidOutcome.PENDING }
+                    .thenByDescending { it.request?.createdAtMillis ?: 0L },
+            )
+            trySend(entries)
+        }
+
+        fun ensureRequestListener(requestId: String) {
+            if (requestListeners.containsKey(requestId)) return
+            requestListeners[requestId] = firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS)
+                .document(requestId)
+                .addSnapshotListener { snapshot, _ ->
+                    requests[requestId] = snapshot?.let { FirestoreMappers.requestFromDocument(it) }
+                    emitEntries()
+                }
+        }
+
+        fun removeStaleRequestListeners(activeRequestIds: Set<String>) {
+            val stale = requestListeners.keys - activeRequestIds
+            stale.forEach { requestId ->
+                requestListeners.remove(requestId)?.remove()
+                requests.remove(requestId)
+            }
+        }
+
+        val bidsListener = firestore.collectionGroup(FirestoreConstants.BIDS)
+            .whereEqualTo("shopId", shopId)
+            .addSnapshotListener { snapshot, _ ->
+                bidDocs.clear()
+                val activeRequestIds = mutableSetOf<String>()
+                snapshot?.documents?.forEach { doc ->
+                    val requestId = doc.reference.parent.parent?.id ?: return@forEach
+                    val bid = FirestoreMappers.bidFromDocument(doc) ?: return@forEach
+                    bidDocs[requestId] = bid
+                    activeRequestIds.add(requestId)
+                    ensureRequestListener(requestId)
+                }
+                removeStaleRequestListeners(activeRequestIds)
+                emitEntries()
+            }
+
+        awaitClose {
+            bidsListener.remove()
+            requestListeners.values.forEach { it.remove() }
+        }
+    }
+
     suspend fun placeProviderBid(
         requestId: String,
         price: Double,
@@ -623,11 +683,11 @@ class BusinessRepository(
             price = price,
             message = message.trim(),
         )
-        firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS)
-            .document(requestId)
-            .collection(FirestoreConstants.BIDS)
+        val requestRef = firestore.collection(FirestoreConstants.BREAKDOWN_REQUESTS).document(requestId)
+        requestRef.collection(FirestoreConstants.BIDS)
             .add(FirestoreMappers.bidToMap(bid))
             .await()
+        requestRef.update("bidShopIds", FieldValue.arrayUnion(shop.id)).await()
     }
 
     suspend fun getOnlineShops(): List<MechanicShop> {

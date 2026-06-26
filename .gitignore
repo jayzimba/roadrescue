@@ -10,6 +10,12 @@
 .DS_Store
 /build
 /captures
+/app/google-services.json
+/app/src/main/res/values/maps_api_key.xml
 .externalNativeBuild
 .cxx
+google-services.json
 local.properties
+firebase.json
+storage.rules
+firebase.index.json

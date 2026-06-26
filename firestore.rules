@@ -71,19 +71,29 @@ service cloud.firestore {
       allow read: if isSignedIn()
         && (resource.data.userId == request.auth.uid
           || resource.data.status == 'BIDDING'
-          || resource.data.acceptedShopId == getShopIdForUser());
+          || resource.data.acceptedShopId == getShopIdForUser()
+          || (resource.data.bidShopIds != null
+            && getShopIdForUser() in resource.data.bidShopIds));
 
       allow update: if isSignedIn()
-        && resource.data.userId == request.auth.uid;
+        && (resource.data.userId == request.auth.uid
+          || (resource.data.status == 'BIDDING'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bidShopIds'])
+            && getShopIdForUser() in request.resource.data.bidShopIds));
 
       match /bids/{bidId} {
         allow read: if isSignedIn()
           && (get(/databases/$(database)/documents/breakdown_requests/$(requestId)).data.userId == request.auth.uid
-            || get(/databases/$(database)/documents/breakdown_requests/$(requestId)).data.status == 'BIDDING');
+            || get(/databases/$(database)/documents/breakdown_requests/$(requestId)).data.status == 'BIDDING'
+            || resource.data.shopId == getShopIdForUser());
 
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/breakdown_requests/$(requestId)).data.status == 'BIDDING';
       }
+    }
+
+    match /{path=**}/bids/{bidId} {
+      allow read: if isSignedIn() && resource.data.shopId == getShopIdForUser();
     }
 
     function getShopIdForUser() {
