@@ -10,6 +10,8 @@ const messaging = getMessaging();
 
 const BIDS_CHANNEL = "bids";
 const ORDERS_CHANNEL = "orders";
+const NOTIFICATION_ICON = "ic_notification";
+const NOTIFICATION_COLOR = "#FF6B35";
 
 /**
  * @param {string[]} tokens
@@ -41,6 +43,8 @@ async function sendToTokens(tokens, payload) {
       priority: "high",
       notification: {
         channelId,
+        icon: NOTIFICATION_ICON,
+        color: NOTIFICATION_COLOR,
       },
     },
   });
